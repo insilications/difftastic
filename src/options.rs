@@ -173,7 +173,7 @@ fn app() -> clap::Command {
         )
         .arg(
             Arg::new("display").long("display")
-                .value_parser(["side-by-side", "side-by-side-show-both", "inline", "json"])
+                .value_parser(["side-by-side", "side-by-side-show-both", "inline", "json", "json2"])
                 .default_value("side-by-side")
                 .value_name("MODE")
                 .action(ArgAction::Set)
@@ -330,6 +330,7 @@ pub(crate) enum DisplayMode {
     SideBySide,
     SideBySideShowBoth,
     Json,
+    Json2,
 }
 
 #[derive(Eq, PartialEq, Debug)]
@@ -706,13 +707,14 @@ pub(crate) fn parse_args() -> Mode {
         "side-by-side-show-both" => DisplayMode::SideBySideShowBoth,
         "inline" => DisplayMode::Inline,
         "json" => {
-            if env::var("DFT_UNSTABLE").is_err() {
-                eprintln!("JSON output is an unstable feature and its format may change in future. To enable JSON output, set the environment variable DFT_UNSTABLE=yes.");
-                std::process::exit(EXIT_BAD_ARGUMENTS);
-            }
+            // if env::var("DFT_UNSTABLE").is_err() {
+            //     eprintln!("JSON output is an unstable feature and its format may change in future. To enable JSON output, set the environment variable DFT_UNSTABLE=yes.");
+            //     std::process::exit(EXIT_BAD_ARGUMENTS);
+            // }
 
             DisplayMode::Json
         }
+        "json2" => DisplayMode::Json2,
         _ => {
             unreachable!("clap has already validated display")
         }
