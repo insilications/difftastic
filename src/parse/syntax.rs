@@ -7,6 +7,7 @@ use std::{cell::Cell, env, fmt, hash::Hash, num::NonZeroU32};
 use line_numbers::LinePositions;
 use line_numbers::SingleLineSpan;
 use typed_arena::Arena;
+use serde::{ser::SerializeStruct, Serialize, Serializer};
 
 use self::Syntax::*;
 use crate::lines::split_on_newlines;
@@ -680,6 +681,24 @@ impl MatchKind {
                 | MatchKind::NovelWord { .. }
                 | MatchKind::UnchangedPartOfNovelItem { .. }
         )
+    }
+}
+
+impl Serialize for MatchKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            // Use the `..` pattern to ignore the fields within each variant
+            MatchKind::UnchangedToken { .. } => serializer.serialize_str("unchanged_token"),
+            MatchKind::Novel { .. } => serializer.serialize_str("novel"),
+            MatchKind::UnchangedPartOfNovelItem { .. } => {
+                serializer.serialize_str("unchanged_part_of_novel_item")
+            }
+            MatchKind::NovelWord { .. } => serializer.serialize_str("novel_word"),
+            MatchKind::Ignored { .. } => serializer.serialize_str("ignored"),
+        }
     }
 }
 

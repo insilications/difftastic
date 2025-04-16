@@ -230,6 +230,7 @@ struct Change<'c> {
     end: u32,
     content: &'c str,
     highlight: Highlight,
+    highlight_type: &'c syntax::MatchKind,
 }
 
 #[derive(Debug, Serialize)]
@@ -297,7 +298,7 @@ fn add_changes_to_side<'s>(
     side: &mut Side<'s>,
     line_num: LineNumber,
     src_lines: &[&'s str],
-    all_matches: &[MatchedPos],
+    all_matches: &'s [MatchedPos],
 ) {
     let src_line = src_lines[line_num.0 as usize];
 
@@ -308,6 +309,7 @@ fn add_changes_to_side<'s>(
             end: m.pos.end_col,
             content: &src_line[(m.pos.start_col as usize)..(m.pos.end_col as usize)],
             highlight: Highlight::from_match(&m.kind),
+            highlight_type: &m.kind
         })
     }
 }
