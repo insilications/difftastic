@@ -1,6 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
 use std::collections::btree_map::Entry as BTreeMapEntry;
 use std::collections::hash_map::Entry as HashMapEntry;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 
 use line_numbers::LineNumber;
@@ -218,18 +218,6 @@ impl AllChunks {
             change_keys: std::collections::HashSet::new(), // Initialize HashSet
         }
     }
-
-    // // Helper to add a change if its key is not already present.
-    // // Returns true if the change was added, false if it was a duplicate.
-    // fn add_unique(&mut self, change: Change2<'c>) -> bool {
-    //     let key = ChangeKey { start: change.start, end: change.end };
-    //     if self.change_keys.insert(key) { // HashSet::insert returns true if value was not present
-    //         self.changes.push(change);
-    //         true
-    //     } else {
-    //         false // Duplicate key found
-    //     }
-    // }
 }
 
 #[derive(Debug, Serialize)]
@@ -286,7 +274,7 @@ fn add_changes_to_side<'s>(
         let change_to_add: Change2<'s>;
         let change_key: ChangeKey; // Use the lightweight key for lookups
 
-        // --- OPTIMIZATION: Merge Novel kinds before deduplication check ---
+        //  Merge Novel kinds before deduplication check
         if matches!(m.kind, MatchKind::Novel { .. }) {
             let current_start = m.pos.start_col;
             let mut current_end = m.pos.end_col;
@@ -304,7 +292,10 @@ fn add_changes_to_side<'s>(
                 }
             }
 
-            change_key = ChangeKey { start: current_start, end: current_end };
+            change_key = ChangeKey {
+                start: current_start,
+                end: current_end,
+            };
             change_to_add = Change2 {
                 start: current_start,
                 end: current_end,
@@ -316,7 +307,10 @@ fn add_changes_to_side<'s>(
             let start_idx = m.pos.start_col;
             let end_idx = m.pos.end_col;
 
-            change_key = ChangeKey { start: start_idx, end: end_idx };
+            change_key = ChangeKey {
+                start: start_idx,
+                end: end_idx,
+            };
             change_to_add = Change2 {
                 start: start_idx,
                 end: end_idx,
@@ -327,7 +321,7 @@ fn add_changes_to_side<'s>(
 
         let line_entry = lines_for_all_chunks.entry(line_num.0);
         let all_chunks_for_line = match line_entry {
-             // Use HashMap's Entry API
+            // Use HashMap's Entry API
             HashMapEntry::Occupied(occupied_entry) => occupied_entry.into_mut(),
             HashMapEntry::Vacant(vacant_entry) => vacant_entry.insert(AllChunks::new()),
         };
@@ -340,33 +334,6 @@ fn add_changes_to_side<'s>(
 
             line.rhs.as_mut().unwrap().changes.push(change_to_add);
         }
-
-        // // Attempt to add the change; add_unique returns true if it was new.
-        // let is_new_change = all_chunks_for_line.add_unique(change_to_add);
-        //
-        // if is_new_change {
-        //     // If the change was globally unique (added to lines_for_all_chunks),
-        //     // also add it to the current hunk's `lines` map.
-        //     // We need to get the *last* added change from `all_chunks_for_line.changes`
-        //     // because `change_to_add` was moved into `add_unique`.
-        //     // This assumes `add_unique` pushes to the end if successful.
-        //      if let Some(added_change_ref) = all_chunks_for_line.changes.last() {
-        //         let line = lines
-        //             .entry(Some(line_num.0))
-        //             .or_insert_with(|| Line::new(Some(line_num.0)));
-        //
-        //         // Push a new Change2 referencing the data from the global store.
-        //         // This avoids storing duplicate strings/references if the same change appears in multiple hunks.
-        //         // NOTE: This creates a *new* Change2 struct, but it *references* the same content and highlight_type
-        //         // as the one stored in `lines_for_all_chunks`. This is memory efficient.
-        //          line.rhs.as_mut().unwrap().changes.push(Change2 {
-        //              start: added_change_ref.start,
-        //              end: added_change_ref.end,
-        //              content: added_change_ref.content, // Reference same string slice
-        //              highlight_type: added_change_ref.highlight_type, // Reference same MatchKind
-        //          });
-        //     }
-        // }
     }
 }
 
@@ -381,165 +348,3 @@ fn matches_for_line(matches: &[MatchedPos], line_num: LineNumber) -> Vec<&Matche
         .filter(|m| m.kind.is_novel())
         .collect()
 }
-
-// fn add_changes_to_side<'s>(
-//     lines: &mut BTreeMap<Option<u32>, Line<'s>>,
-//     line_num: LineNumber,
-//     src_lines: &[&'s str],
-//     all_matches: &'s [MatchedPos],
-//     lines_for_all_chunks: &mut HashMap<u32, AllChunks<'s>>,
-// ) {
-//     use syntax::MatchKind;
-//     // Ensure line_num is valid before indexing
-//     let line_idx = line_num.0 as usize;
-//     if line_idx >= src_lines.len() {
-//         eprintln!("Warning: Invalid line number {} encountered.", line_num.0);
-//         return;
-//     }
-//     let src_line = src_lines[line_idx];
-//
-//     // Get matches relevant to this line that are considered novel
-//     let matches = matches_for_line(all_matches, line_num);
-//
-//     let mut iter = matches.into_iter().peekable();
-//     while let Some(m) = iter.next() {
-//         // Ignore specified kinds.
-//         match m.kind {
-//             MatchKind::UnchangedPartOfNovelItem { .. } | MatchKind::UnchangedToken { .. } => {
-//                 continue; // Skip deliberately ignored kinds
-//             }
-//             _ => {} // Process other kinds allowed by matches_for_line
-//         }
-//
-//         // Merge consecutive Novel items
-//         if matches!(m.kind, MatchKind::Novel { .. }) {
-//             // This is the start of a potential sequence of Novel items
-//             let current_start = m.pos.start_col;
-//             let mut current_end = m.pos.end_col;
-//             let highlight_type_ref = &m.kind; // Use the kind from the first item
-//
-//             // Peek ahead to see if the *next item in the iterator* is also Novel
-//             while let Some(next_m) = iter.peek() {
-//                 // Now, we merge if the *next match* in the filtered list is also Novel.
-//                 if matches!(next_m.kind, MatchKind::Novel { .. }) {
-//                     // Extend the range to the end of the next item
-//                     current_end = next_m.pos.end_col;
-//                     // Consume the peeked item as it's now part of the merged range
-//                     iter.next();
-//                 } else {
-//                     // The next item is not a Novel item, stop merging
-//                     break;
-//                 }
-//             }
-//
-//             let entry_result = lines_for_all_chunks.entry(line_num.0); // map is mutably borrowed
-//             match entry_result {
-//                 Entry::Occupied(mut occupied_entry) => {
-//                     let changes: &Vec<Change2> = &occupied_entry.get().changes;
-//                     let mut found: bool = false;
-//                     for c in changes.iter() {
-//                         if c.start == current_start && c.end == current_end {
-//                             found = true;
-//                         }
-//                     }
-//                     if !found {
-//                         occupied_entry.get_mut().changes.push(Change2 {
-//                             start: current_start,
-//                             end: current_end,
-//                             content: &src_line[(current_start as usize)..(current_end as usize)],
-//                             highlight_type: highlight_type_ref,
-//                         });
-//
-//                         let line = lines
-//                             .entry(Some(line_num.0))
-//                             .or_insert_with(|| Line::new(Some(line_num.0)));
-//                         // push the single, potentially merged, Change2
-//                         line.rhs.as_mut().unwrap().changes.push(Change2 {
-//                             start: current_start,
-//                             end: current_end,
-//                             content: &src_line[(current_start as usize)..(current_end as usize)],
-//                             highlight_type: highlight_type_ref,
-//                         });
-//                     }
-//                 }
-//                 Entry::Vacant(vacant_entry) => {
-//                     let mut new_chunk = AllChunks::new();
-//                     new_chunk.changes.push(Change2 {
-//                         start: current_start,
-//                         end: current_end,
-//                         content: &src_line[(current_start as usize)..(current_end as usize)],
-//                         highlight_type: highlight_type_ref,
-//                     });
-//                     vacant_entry.insert(new_chunk);
-//
-//                     let line = lines
-//                         .entry(Some(line_num.0))
-//                         .or_insert_with(|| Line::new(Some(line_num.0)));
-//                     // push the single, potentially merged, Change2
-//                     line.rhs.as_mut().unwrap().changes.push(Change2 {
-//                         start: current_start,
-//                         end: current_end,
-//                         content: &src_line[(current_start as usize)..(current_end as usize)],
-//                         highlight_type: highlight_type_ref,
-//                     });
-//                 }
-//             }
-//         } else {
-//             // This match is not MatchKind::Novel (e.g., could be NovelWord)
-//             // or it wasn't mergeable. Add it individually.
-//             let start_byte_idx = m.pos.start_col as usize;
-//             let end_byte_idx = m.pos.end_col as usize;
-//
-//             let entry_result = lines_for_all_chunks.entry(line_num.0); // map is mutably borrowed
-//             match entry_result {
-//                 Entry::Occupied(mut occupied_entry) => {
-//                     let changes: &Vec<Change2> = &occupied_entry.get().changes;
-//                     let mut found: bool = false;
-//                     for c in changes.iter() {
-//                         if c.start == (start_byte_idx as u32) && c.end == (end_byte_idx as u32) {
-//                             found = true;
-//                         }
-//                     }
-//                     if !found {
-//                         occupied_entry.get_mut().changes.push(Change2 {
-//                             start: (start_byte_idx as u32),
-//                             end: (end_byte_idx as u32),
-//                             content: &src_line[start_byte_idx..end_byte_idx],
-//                             highlight_type: &m.kind,
-//                         });
-//
-//                         let line = lines
-//                             .entry(Some(line_num.0))
-//                             .or_insert_with(|| Line::new(Some(line_num.0)));
-//                         line.rhs.as_mut().unwrap().changes.push(Change2 {
-//                             start: (start_byte_idx as u32),
-//                             end: (end_byte_idx as u32),
-//                             content: &src_line[start_byte_idx..end_byte_idx],
-//                             highlight_type: &m.kind,
-//                         });
-//                     }
-//                 }
-//                 Entry::Vacant(vacant_entry) => {
-//                     let mut new_chunk = AllChunks::new();
-//                     new_chunk.changes.push(Change2 {
-//                         start: (start_byte_idx as u32),
-//                         end: (end_byte_idx as u32),
-//                         content: &src_line[start_byte_idx..end_byte_idx],
-//                         highlight_type: &m.kind,
-//                     });
-//                     vacant_entry.insert(new_chunk);
-//
-//                     let line = lines
-//                         .entry(Some(line_num.0))
-//                         .or_insert_with(|| Line::new(Some(line_num.0)));
-//                     line.rhs.as_mut().unwrap().changes.push(Change2 {
-//                         start: (start_byte_idx as u32),
-//                         end: (end_byte_idx as u32),
-//                         content: &src_line[start_byte_idx..end_byte_idx],
-//                         highlight_type: &m.kind,
-//                     });
-//                 }
-//             }
-//         }
-//     }
-// }
