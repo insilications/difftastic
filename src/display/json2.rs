@@ -1,7 +1,6 @@
-use std::collections::btree_map::Entry as BTreeMapEntry;
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::collections::{BTreeMap, HashMap};
-use std::hash::{Hash, Hasher};
+use std::hash::{Hash};
 
 use line_numbers::LineNumber;
 use serde::{Serialize, Serializer, ser::SerializeStruct};
@@ -258,35 +257,35 @@ fn add_changes_to_side<'s>(
     }
     let src_line = src_lines[line_idx];
 
-    // Get matches relevant to this line that are considered novel
-    let matches = matches_for_line(all_matches, line_num);
+    let mut relevant_matches = all_matches
+        .iter()
+        .filter(|m| m.pos.line == line_num && m.kind.is_novel()) // Combine filters
+        .filter(|m| {
+            !matches!(
+                m.kind,
+                syntax::MatchKind::UnchangedPartOfNovelItem { .. } | syntax::MatchKind::UnchangedToken { .. }
+            )
+        }) // Filter the deliberately ignored kinds early
+        .peekable(); // Make the filtered iterator peekable for merging
 
-    let mut iter = matches.into_iter().peekable();
-    while let Some(m) = iter.next() {
-        // Ignore specified kinds.
-        match m.kind {
-            MatchKind::UnchangedPartOfNovelItem { .. } | MatchKind::UnchangedToken { .. } => {
-                continue; // Skip deliberately ignored kinds
-            }
-            _ => {} // Process other kinds allowed by matches_for_line
-        }
-
+    while let Some(m) = relevant_matches.next() {
         let change_to_add: Change2<'s>;
         let change_key: ChangeKey; // Use the lightweight key for lookups
 
-        //  Merge Novel kinds before deduplication check
+        //  Merge Novel kinds before deduplication check (using the filtered iterator 'relevant_matches')
         if matches!(m.kind, MatchKind::Novel { .. }) {
             let current_start = m.pos.start_col;
             let mut current_end = m.pos.end_col;
             let highlight_type_ref = &m.kind; // Use kind from the *first* item in the merged sequence
 
             // Peek ahead and merge consecutive Novel items
-            while let Some(next_m) = iter.peek() {
+            while let Some(next_m) = relevant_matches.peek() {
+                // Peek ahead on the filtered iterator
                 if matches!(next_m.kind, MatchKind::Novel { .. }) {
                     // Extend the range to the end of the next item
                     current_end = next_m.pos.end_col;
                     // Consume the peeked item as it's now part of the merged range
-                    iter.next();
+                    relevant_matches.next();
                 } else {
                     break; // The next item is not a Novel item, stop merging
                 }
@@ -303,7 +302,8 @@ fn add_changes_to_side<'s>(
                 highlight_type: highlight_type_ref,
             };
         } else {
-            // This match is not MatchKind::Novel (e.g., could be NovelWord). Add it individually.
+            // This match is not MatchKind::Novel (e.g., could be NovelWord).
+            // Add it individually.
             let start_idx = m.pos.start_col;
             let end_idx = m.pos.end_col;
 
@@ -335,16 +335,4 @@ fn add_changes_to_side<'s>(
             line.rhs.as_mut().unwrap().changes.push(change_to_add);
         }
     }
-}
-
-fn matches_for_line(matches: &[MatchedPos], line_num: LineNumber) -> Vec<&MatchedPos> {
-    // This implementation is reasonably clear. While it iterates twice (filter, filter)
-    // and allocates a Vec, optimizing it further might add complexity for potentially
-    // minor gains unless `all_matches` is enormous and this function is extremely hot.
-    // The current approach is likely fine.
-    matches
-        .iter()
-        .filter(|m| m.pos.line == line_num)
-        .filter(|m| m.kind.is_novel())
-        .collect()
 }
