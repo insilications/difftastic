@@ -11,7 +11,6 @@ use crate::{
         side_by_side::lines_with_novel,
     },
     lines::MaxLine,
-    // parse::syntax::{self, MatchedPos, StringKind},
     parse::syntax::{self, MatchedPos},
     summary::{DiffResult, FileContent, FileFormat},
 };
@@ -34,11 +33,7 @@ struct File<'f> {
 }
 
 impl<'f> File<'f> {
-    fn with_sections(
-        language: &'f FileFormat,
-        path: &'f str,
-        chunks: Vec<Vec<Line<'f>>>,
-    ) -> File<'f> {
+    fn with_sections(language: &'f FileFormat, path: &'f str, chunks: Vec<Vec<Line<'f>>>) -> File<'f> {
         File {
             language,
             path,
@@ -58,7 +53,9 @@ impl<'f> File<'f> {
 }
 
 impl<'f> From<&'f DiffResult> for File<'f> {
-    // This function converts a DiffResult (containing information about file differences, including source content and matched positions) into a File struct suitable for JSON serialization. It calculates hunks of changes, filters relevant lines, and delegates the extraction of specific changes within lines to add_changes_to_side.
+    // This function converts a DiffResult (containing information about file differences, including source content and
+    // matched positions) into a File struct suitable for JSON serialization. It calculates hunks of changes, filters
+    // relevant lines, and delegates the extraction of specific changes within lines to add_changes_to_side.
     fn from(summary: &'f DiffResult) -> Self {
         match (&summary.lhs_src, &summary.rhs_src) {
             (FileContent::Text(lhs_src), FileContent::Text(rhs_src)) => {
@@ -77,46 +74,31 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                 );
 
                 if hunks.is_empty() {
-                    return File::with_status(
-                        &summary.file_format,
-                        &summary.display_path,
-                        Status::Unchanged,
-                    );
+                    return File::with_status(&summary.file_format, &summary.display_path, Status::Unchanged);
                 }
 
                 if lhs_src.is_empty() {
-                    return File::with_status(
-                        &summary.file_format,
-                        &summary.display_path,
-                        Status::Created,
-                    );
+                    return File::with_status(&summary.file_format, &summary.display_path, Status::Created);
                 }
                 if rhs_src.is_empty() {
-                    return File::with_status(
-                        &summary.file_format,
-                        &summary.display_path,
-                        Status::Deleted,
-                    );
+                    return File::with_status(&summary.file_format, &summary.display_path, Status::Deleted);
                 }
 
                 let lhs_lines = lhs_src.split('\n').collect::<Vec<&str>>();
                 let rhs_lines = rhs_src.split('\n').collect::<Vec<&str>>();
 
-                let (_, rhs_lines_with_novel) =
-                    lines_with_novel(&summary.lhs_positions, &summary.rhs_positions);
+                let (_, rhs_lines_with_novel) = lines_with_novel(&summary.lhs_positions, &summary.rhs_positions);
 
-                let matched_lines = all_matched_lines_filled(
-                    &summary.lhs_positions,
-                    &summary.rhs_positions,
-                    &lhs_lines,
-                    &rhs_lines,
-                );
+                let matched_lines =
+                    all_matched_lines_filled(&summary.lhs_positions, &summary.rhs_positions, &lhs_lines, &rhs_lines);
                 let mut matched_lines = &matched_lines[..];
 
+                // `lines_for_all_chunks` will be used for deduplication lookups. Change it to use `HashMap` as it offers
+                // average O(1) lookups/insertions compared to BTreeMap's O(log N).
                 let mut lines_for_all_chunks: BTreeMap<u32, AllChunks<'f>> = BTreeMap::new();
                 let mut chunks = Vec::with_capacity(hunks.len());
                 for hunk in &hunks {
-                    println!("\nhunks");
+                    // Sorted iteration is necessary for `lines`. Keep using `BTreeMap` here.
                     let mut lines: BTreeMap<Option<u32>, Line<'f>> = BTreeMap::new();
 
                     let (start_i, end_i) = matched_lines_indexes_for_hunk(matched_lines, hunk, 0);
@@ -124,23 +106,12 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                     matched_lines = &matched_lines[start_i..];
 
                     for (_, rhs_line_num) in aligned_lines {
-                        if !rhs_lines_with_novel
-                                .contains(&rhs_line_num.unwrap_or(LineNumber(0)))
-                        {
+                        if !rhs_lines_with_novel.contains(&rhs_line_num.unwrap_or(LineNumber(0))) {
                             continue;
                         }
-                        println!("\naligned_lines");
-
-                        // let line = lines
-                        //     .entry(rhs_line_num.unwrap().0)
-                        //     .or_insert_with(|| {
-                        //         Line::new(Some(rhs_line_num.unwrap().0))
-                        //     });
 
                         if let Some(line_num) = rhs_line_num {
-                            println!("line_num: {}", line_num.display());
                             add_changes_to_side(
-                                // line.rhs.as_mut().unwrap(),
                                 &mut lines,
                                 *line_num,
                                 &rhs_lines,
@@ -196,17 +167,13 @@ impl Serialize for File<'_> {
 
 #[derive(Debug, Serialize)]
 struct Line<'l> {
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // lhs: Option<Side<'l>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rhs: Option<Side<'l>>,
 }
 
 impl<'l> Line<'l> {
-    // fn new(lhs_number: Option<u32>, rhs_number: Option<u32>) -> Line<'l> {
     fn new(rhs_number: Option<u32>) -> Line<'l> {
         Line {
-            // lhs: lhs_number.map(Side::new),
             rhs: rhs_number.map(Side::new),
         }
     }
@@ -233,9 +200,7 @@ struct AllChunks<'c> {
 
 impl<'c> AllChunks<'c> {
     fn new() -> AllChunks<'c> {
-        AllChunks {
-            changes: Vec::new(),
-        }
+        AllChunks { changes: Vec::new() }
     }
 }
 
@@ -247,65 +212,18 @@ struct Change2<'c> {
     highlight_type: &'c syntax::MatchKind,
 }
 
-// #[derive(Debug, Serialize)]
-// #[serde(rename_all = "snake_case")]
-// // TODO: use syntax::TokenKind and syntax::AtomKind instead of this merged enum,
-// // blocked by https://github.com/serde-rs/serde/issues/1402
-// enum Highlight {
-//     Delimiter,
-//     Normal,
-//     String,
-//     Type,
-//     Comment,
-//     Keyword,
-//     TreeSitterError,
-// }
-//
-// impl Highlight {
-//     fn from_match(kind: &syntax::MatchKind) -> Self {
-//         use syntax::{AtomKind, MatchKind, TokenKind};
-//
-//         let highlight = match kind {
-//             MatchKind::Ignored { highlight, .. } => highlight,
-//             MatchKind::UnchangedToken { highlight, .. } => highlight,
-//             MatchKind::Novel { highlight, .. } => highlight,
-//             MatchKind::NovelWord { highlight, .. } => highlight,
-//             MatchKind::UnchangedPartOfNovelItem { highlight, .. } => highlight,
-//         };
-//
-//         match highlight {
-//             TokenKind::Delimiter => Highlight::Delimiter,
-//             TokenKind::Atom(atom) => match atom {
-//                 AtomKind::String(StringKind::StringLiteral) => Highlight::String,
-//                 AtomKind::String(StringKind::Text) => Highlight::Normal,
-//                 AtomKind::Keyword => Highlight::Keyword,
-//                 AtomKind::Comment => Highlight::Comment,
-//                 AtomKind::Type => Highlight::Type,
-//                 AtomKind::Normal => Highlight::Normal,
-//                 AtomKind::TreeSitterError => Highlight::TreeSitterError,
-//             },
-//         }
-//     }
-// }
-
 pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
     let files = diffs
         .iter()
         .map(File::from)
         .filter(|f| print_unchanged || f.status != Status::Unchanged)
         .collect::<Vec<File>>();
-    println!(
-        "{}",
-        serde_json::to_string(&files).expect("failed to serialize files")
-    );
+    println!("{}", serde_json::to_string(&files).expect("failed to serialize files"));
 }
 
 pub(crate) fn print(diff: &DiffResult) {
     let file = File::from(diff);
-    println!(
-        "{}",
-        serde_json::to_string(&file).expect("failed to serialize file")
-    )
+    println!("{}", serde_json::to_string(&file).expect("failed to serialize file"))
 }
 
 fn add_changes_to_side<'s>(
@@ -325,22 +243,22 @@ fn add_changes_to_side<'s>(
     }
     let src_line = src_lines[line_idx];
 
-    // println!("all_matches.len(): {}", all_matches.len());
-    // for m in all_matches.iter() {
-    //     println!("m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}", m.pos.line.display(), m.pos.start_col, m.pos.end_col);
-    // }
-
     // Get matches relevant to this line that are considered novel
     let matches = matches_for_line(all_matches, line_num);
 
     println!("matches.len(): {}", matches.len());
     for m in matches.iter() {
-        println!("m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}", m.pos.line.display(), m.pos.start_col, m.pos.end_col);
+        println!(
+            "m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}",
+            m.pos.line.display(),
+            m.pos.start_col,
+            m.pos.end_col
+        );
     }
 
     let mut iter = matches.into_iter().peekable();
     while let Some(m) = iter.next() {
-        // Requirement 1: Ignore specified kinds.
+        // Ignore specified kinds.
         match m.kind {
             MatchKind::UnchangedPartOfNovelItem { .. } | MatchKind::UnchangedToken { .. } => {
                 continue; // Skip this match
@@ -389,9 +307,7 @@ fn add_changes_to_side<'s>(
 
                         let line = lines
                             .entry(Some(line_num.0))
-                            .or_insert_with(|| {
-                                Line::new(Some(line_num.0))
-                            });
+                            .or_insert_with(|| Line::new(Some(line_num.0)));
                         // push the single, potentially merged, Change2
                         line.rhs.as_mut().unwrap().changes.push(Change2 {
                             start: current_start,
@@ -412,10 +328,8 @@ fn add_changes_to_side<'s>(
                     vacant_entry.insert(new_chunk);
 
                     let line = lines
-                            .entry(Some(line_num.0))
-                            .or_insert_with(|| {
-                                Line::new(Some(line_num.0))
-                            });
+                        .entry(Some(line_num.0))
+                        .or_insert_with(|| Line::new(Some(line_num.0)));
                     // push the single, potentially merged, Change2
                     line.rhs.as_mut().unwrap().changes.push(Change2 {
                         start: current_start,
@@ -430,16 +344,6 @@ fn add_changes_to_side<'s>(
             // or it wasn't mergeable. Add it individually.
             let start_byte_idx = m.pos.start_col as usize;
             let end_byte_idx = m.pos.end_col as usize;
-
-            // let line = lines
-            //     .entry(rhs_line_num.map(|l| l.0))
-            //     .or_insert_with(|| {
-            //         Line::new(rhs_line_num.map(|l| l.0))
-            //     });
-            //
-            // if lines_for_all_chunks.contains_key(line_num.0) {
-            //
-            // }
 
             let entry_result = lines_for_all_chunks.entry(line_num.0); // map is mutably borrowed
             match entry_result {
@@ -461,9 +365,7 @@ fn add_changes_to_side<'s>(
 
                         let line = lines
                             .entry(Some(line_num.0))
-                            .or_insert_with(|| {
-                                Line::new(Some(line_num.0))
-                            });
+                            .or_insert_with(|| Line::new(Some(line_num.0)));
                         line.rhs.as_mut().unwrap().changes.push(Change2 {
                             start: (start_byte_idx as u32),
                             end: (end_byte_idx as u32),
@@ -471,8 +373,6 @@ fn add_changes_to_side<'s>(
                             highlight_type: &m.kind,
                         });
                     }
-                    // println!("  Key '{}' exists with value: {}", occupied_entry.key(), occupied_entry.get());
-                    // You could modify it here: *occupied_entry.get_mut() += 10;
                 }
                 Entry::Vacant(vacant_entry) => {
                     let mut new_chunk = AllChunks::new();
@@ -484,17 +384,9 @@ fn add_changes_to_side<'s>(
                     });
                     vacant_entry.insert(new_chunk);
 
-                    // vacant_entry.insert(Vec::new(Change2 {
-                    //     start: (start_byte_idx as u32),
-                    //     end: (end_byte_idx as u32),
-                    //     content: &src_line[start_byte_idx..end_byte_idx],
-                    //     highlight_type: &m.kind,
-                    // }));
                     let line = lines
-                            .entry(Some(line_num.0))
-                            .or_insert_with(|| {
-                                Line::new(Some(line_num.0))
-                            });
+                        .entry(Some(line_num.0))
+                        .or_insert_with(|| Line::new(Some(line_num.0)));
                     line.rhs.as_mut().unwrap().changes.push(Change2 {
                         start: (start_byte_idx as u32),
                         end: (end_byte_idx as u32),
@@ -506,103 +398,6 @@ fn add_changes_to_side<'s>(
         }
     }
 }
-
-// fn add_changes_to_side<'s>(
-//     side: &mut Side<'s>,
-//     line_num: LineNumber,
-//     src_lines: &[&'s str],
-//     all_matches: &'s [MatchedPos],
-// ) {
-//     use syntax::MatchKind;
-//     // Ensure line_num is valid before indexing
-//     let line_idx = line_num.0 as usize;
-//     if line_idx >= src_lines.len() {
-//         eprintln!("Warning: Invalid line number {} encountered.", line_num.0);
-//         return;
-//     }
-//     let src_line = src_lines[line_idx];
-//
-//     // Get matches relevant to this line that are considered novel
-//     let matches = matches_for_line(all_matches, line_num);
-//
-//     let mut iter = matches.into_iter().peekable();
-//     while let Some(m) = iter.next() {
-//         // Requirement 1: Ignore specified kinds.
-//         match m.kind {
-//             MatchKind::UnchangedPartOfNovelItem { .. } | MatchKind::UnchangedToken { .. } => {
-//                 continue; // Skip this match
-//             }
-//             _ => {} // Process other kinds allowed by matches_for_line
-//         }
-//
-//         // Requirement 2: Merge consecutive Novel items
-//         if matches!(m.kind, MatchKind::Novel { .. }) {
-//             // This is the start of a potential sequence of Novel items
-//             let mut current_start = m.pos.start_col;
-//             let mut current_end = m.pos.end_col;
-//             let highlight_type_ref = &m.kind; // Use the kind from the first item
-//
-//             // Peek ahead to see if the *next item in the iterator* is also Novel
-//             while let Some(next_m) = iter.peek() {
-//                 // MODIFICATION HERE: Removed the adjacency check (&& next_m.pos.start_col == current_end)
-//                 // Now, we merge if the *next match* in the filtered list is also Novel.
-//                 if matches!(next_m.kind, MatchKind::Novel { .. }) {
-//                     // Extend the range to the end of the next item
-//                     current_end = next_m.pos.end_col;
-//                     // Consume the peeked item as it's now part of the merged range
-//                     iter.next();
-//                 } else {
-//                     // The next item is not a Novel item, stop merging
-//                     break;
-//                 }
-//             }
-//
-//             // Ensure indices are within bounds before slicing
-//             let start_byte_idx = current_start as usize;
-//             let end_byte_idx = current_end as usize;
-//
-//             if start_byte_idx <= end_byte_idx && end_byte_idx <= src_line.len() {
-//                 // Push the single, potentially merged, Change2
-//                 side.changes.push(Change2 {
-//                     start: current_start,
-//                     end: current_end,
-//                     content: &src_line[start_byte_idx..end_byte_idx],
-//                     highlight_type: highlight_type_ref,
-//                 });
-//             } else {
-//                 eprintln!(
-//                     "Warning: Invalid range [{}, {}) for line '{}' (len {}). Skipping change.",
-//                     start_byte_idx,
-//                     end_byte_idx,
-//                     src_line,
-//                     src_line.len()
-//                 );
-//             }
-//         } else {
-//             // This match is not MatchKind::Novel (e.g., could be NovelWord)
-//             // or it wasn't mergeable. Add it individually.
-//             let start_byte_idx = m.pos.start_col as usize;
-//             let end_byte_idx = m.pos.end_col as usize;
-//
-//             if start_byte_idx <= end_byte_idx && end_byte_idx <= src_line.len() {
-//                 side.changes.push(Change2 {
-//                     start: m.pos.start_col,
-//                     end: m.pos.end_col,
-//                     content: &src_line[start_byte_idx..end_byte_idx],
-//                     highlight_type: &m.kind,
-//                 });
-//             } else {
-//                 eprintln!(
-//                     "Warning: Invalid range [{}, {}) for line '{}' (len {}). Skipping change.",
-//                     start_byte_idx,
-//                     end_byte_idx,
-//                     src_line,
-//                     src_line.len()
-//                 );
-//             }
-//         }
-//     }
-// }
 
 fn matches_for_line(matches: &[MatchedPos], line_num: LineNumber) -> Vec<&MatchedPos> {
     matches
