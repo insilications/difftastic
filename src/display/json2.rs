@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
-use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, HashMap};
+use std::collections::btree_map::Entry as BTreeMapEntry;
+use std::collections::hash_map::Entry as HashMapEntry;
+use std::hash::{Hash, Hasher};
 
 use line_numbers::LineNumber;
 use serde::{Serialize, Serializer, ser::SerializeStruct};
@@ -93,9 +95,10 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                     all_matched_lines_filled(&summary.lhs_positions, &summary.rhs_positions, &lhs_lines, &rhs_lines);
                 let mut matched_lines = &matched_lines[..];
 
-                // `lines_for_all_chunks` will be used for deduplication lookups. Change it to use `HashMap` as it offers
+                // `lines_for_all_chunks` will be used for deduplication lookups. Keep using `HashMap` as it offers
                 // average O(1) lookups/insertions compared to BTreeMap's O(log N).
-                let mut lines_for_all_chunks: BTreeMap<u32, AllChunks<'f>> = BTreeMap::new();
+                let mut lines_for_all_chunks: HashMap<u32, AllChunks<'f>> = HashMap::new();
+
                 let mut chunks = Vec::with_capacity(hunks.len());
                 for hunk in &hunks {
                     // Sorted iteration is necessary for `lines`. Keep using `BTreeMap` here.
@@ -103,7 +106,9 @@ impl<'f> From<&'f DiffResult> for File<'f> {
 
                     let (start_i, end_i) = matched_lines_indexes_for_hunk(matched_lines, hunk, 0);
                     let aligned_lines = &matched_lines[start_i..end_i];
-                    matched_lines = &matched_lines[start_i..];
+                    // matched_lines = &matched_lines[start_i..];
+                    // Efficiently advance the slice view for the next iteration
+                    matched_lines = &matched_lines[end_i..]; // Corrected: Use end_i to avoid reprocessing
 
                     for (_, rhs_line_num) in aligned_lines {
                         if !rhs_lines_with_novel.contains(&rhs_line_num.unwrap_or(LineNumber(0))) {
@@ -121,6 +126,8 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                         }
                     }
 
+                    // If changes were added to `lines` for this hunk, collect them.
+                    // BTreeMap ensures they are collected in line number order.
                     if !lines.is_empty() {
                         chunks.push(lines.into_values().collect());
                     }
@@ -194,13 +201,36 @@ impl<'s> Side<'s> {
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+struct ChangeKey {
+    start: u32,
+    end: u32,
+}
+
 struct AllChunks<'c> {
+    // Stores lightweight keys for O(1) average time complexity duplicate checks.
+    change_keys: std::collections::HashSet<ChangeKey>,
     changes: Vec<Change2<'c>>,
 }
 
 impl<'c> AllChunks<'c> {
     fn new() -> AllChunks<'c> {
-        AllChunks { changes: Vec::new() }
+        AllChunks {
+            change_keys: std::collections::HashSet::new(), // Initialize HashSet
+            changes: Vec::new(),
+        }
+    }
+
+    // Helper to add a change if its key is not already present.
+    // Returns true if the change was added, false if it was a duplicate.
+    fn add_unique(&mut self, change: Change2<'c>) -> bool {
+        let key = ChangeKey { start: change.start, end: change.end };
+        if self.change_keys.insert(key) { // HashSet::insert returns true if value was not present
+            self.changes.push(change);
+            true
+        } else {
+            false // Duplicate key found
+        }
     }
 }
 
@@ -227,12 +257,11 @@ pub(crate) fn print(diff: &DiffResult) {
 }
 
 fn add_changes_to_side<'s>(
-    // side: &mut Side<'s>,
     lines: &mut BTreeMap<Option<u32>, Line<'s>>,
     line_num: LineNumber,
     src_lines: &[&'s str],
     all_matches: &'s [MatchedPos],
-    lines_for_all_chunks: &mut BTreeMap<u32, AllChunks<'s>>,
+    lines_for_all_chunks: &mut HashMap<u32, AllChunks<'s>>,
 ) {
     use syntax::MatchKind;
     // Ensure line_num is valid before indexing
@@ -246,16 +275,6 @@ fn add_changes_to_side<'s>(
     // Get matches relevant to this line that are considered novel
     let matches = matches_for_line(all_matches, line_num);
 
-    println!("matches.len(): {}", matches.len());
-    for m in matches.iter() {
-        println!(
-            "m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}",
-            m.pos.line.display(),
-            m.pos.start_col,
-            m.pos.end_col
-        );
-    }
-
     let mut iter = matches.into_iter().peekable();
     while let Some(m) = iter.next() {
         // Ignore specified kinds.
@@ -266,7 +285,7 @@ fn add_changes_to_side<'s>(
             _ => {} // Process other kinds allowed by matches_for_line
         }
 
-        // Requirement 2: Merge consecutive Novel items
+        // Merge consecutive Novel items
         if matches!(m.kind, MatchKind::Novel { .. }) {
             // This is the start of a potential sequence of Novel items
             let current_start = m.pos.start_col;
