@@ -118,28 +118,27 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                     let aligned_lines = &matched_lines[start_i..end_i];
                     matched_lines = &matched_lines[start_i..];
 
-                    for (lhs_line_num, rhs_line_num) in aligned_lines {
-                        if !lhs_lines_with_novel.contains(&lhs_line_num.unwrap_or(LineNumber(0)))
-                            && !rhs_lines_with_novel
+                    for (_, rhs_line_num) in aligned_lines {
+                        if !rhs_lines_with_novel
                                 .contains(&rhs_line_num.unwrap_or(LineNumber(0)))
                         {
                             continue;
                         }
 
                         let line = lines
-                            .entry((lhs_line_num.map(|l| l.0), rhs_line_num.map(|l| l.0)))
+                            .entry((rhs_line_num.map(|l| l.0)))
                             .or_insert_with(|| {
-                                Line::new(lhs_line_num.map(|l| l.0), rhs_line_num.map(|l| l.0))
+                                Line::new(rhs_line_num.map(|l| l.0))
                             });
 
-                        if let Some(line_num) = lhs_line_num {
-                            add_changes_to_side(
-                                line.lhs.as_mut().unwrap(),
-                                *line_num,
-                                &lhs_lines,
-                                &summary.lhs_positions,
-                            );
-                        }
+                        // if let Some(line_num) = lhs_line_num {
+                        //     add_changes_to_side(
+                        //         line.lhs.as_mut().unwrap(),
+                        //         *line_num,
+                        //         &lhs_lines,
+                        //         &summary.lhs_positions,
+                        //     );
+                        // }
                         if let Some(line_num) = rhs_line_num {
                             add_changes_to_side(
                                 line.rhs.as_mut().unwrap(),
@@ -149,6 +148,37 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                             );
                         }
                     }
+                    // for (lhs_line_num, rhs_line_num) in aligned_lines {
+                    //     if !lhs_lines_with_novel.contains(&lhs_line_num.unwrap_or(LineNumber(0)))
+                    //         && !rhs_lines_with_novel
+                    //             .contains(&rhs_line_num.unwrap_or(LineNumber(0)))
+                    //     {
+                    //         continue;
+                    //     }
+                    //
+                    //     let line = lines
+                    //         .entry((lhs_line_num.map(|l| l.0), rhs_line_num.map(|l| l.0)))
+                    //         .or_insert_with(|| {
+                    //             Line::new(lhs_line_num.map(|l| l.0), rhs_line_num.map(|l| l.0))
+                    //         });
+                    //
+                    //     if let Some(line_num) = lhs_line_num {
+                    //         add_changes_to_side(
+                    //             line.lhs.as_mut().unwrap(),
+                    //             *line_num,
+                    //             &lhs_lines,
+                    //             &summary.lhs_positions,
+                    //         );
+                    //     }
+                    //     if let Some(line_num) = rhs_line_num {
+                    //         add_changes_to_side(
+                    //             line.rhs.as_mut().unwrap(),
+                    //             *line_num,
+                    //             &rhs_lines,
+                    //             &summary.rhs_positions,
+                    //         );
+                    //     }
+                    // }
 
                     chunks.push(lines.into_values().collect());
                 }
@@ -194,16 +224,17 @@ impl Serialize for File<'_> {
 
 #[derive(Debug, Serialize)]
 struct Line<'l> {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    lhs: Option<Side<'l>>,
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // lhs: Option<Side<'l>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rhs: Option<Side<'l>>,
 }
 
 impl<'l> Line<'l> {
-    fn new(lhs_number: Option<u32>, rhs_number: Option<u32>) -> Line<'l> {
+    // fn new(lhs_number: Option<u32>, rhs_number: Option<u32>) -> Line<'l> {
+    fn new(rhs_number: Option<u32>) -> Line<'l> {
         Line {
-            lhs: lhs_number.map(Side::new),
+            // lhs: lhs_number.map(Side::new),
             rhs: rhs_number.map(Side::new),
         }
     }
@@ -299,7 +330,7 @@ fn add_changes_to_side<'s>(
     src_lines: &[&'s str],
     all_matches: &'s [MatchedPos],
 ) {
-    use syntax::{MatchKind};
+    use syntax::MatchKind;
     // Ensure line_num is valid before indexing
     let line_idx = line_num.0 as usize;
     if line_idx >= src_lines.len() {
@@ -356,12 +387,14 @@ fn add_changes_to_side<'s>(
                     highlight_type: highlight_type_ref,
                 });
             } else {
-                 eprintln!(
+                eprintln!(
                     "Warning: Invalid range [{}, {}) for line '{}' (len {}). Skipping change.",
-                    start_byte_idx, end_byte_idx, src_line, src_line.len()
-                 );
+                    start_byte_idx,
+                    end_byte_idx,
+                    src_line,
+                    src_line.len()
+                );
             }
-
         } else {
             // This match is not MatchKind::Novel (e.g., could be NovelWord)
             // or it wasn't mergeable. Add it individually.
@@ -376,10 +409,13 @@ fn add_changes_to_side<'s>(
                     highlight_type: &m.kind,
                 });
             } else {
-                 eprintln!(
+                eprintln!(
                     "Warning: Invalid range [{}, {}) for line '{}' (len {}). Skipping change.",
-                    start_byte_idx, end_byte_idx, src_line, src_line.len()
-                 );
+                    start_byte_idx,
+                    end_byte_idx,
+                    src_line,
+                    src_line.len()
+                );
             }
         }
     }
