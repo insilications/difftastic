@@ -343,14 +343,18 @@ fn add_changes_to_side<'s>(
     }
     let src_line = src_lines[line_idx];
 
-    println!("all_matches.len(): {}", all_matches.len());
-
-    for m in all_matches.iter() {
-        println!("m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}", m.pos.line.display(), m.pos.start_col, m.pos.end_col);
-    }
+    // println!("all_matches.len(): {}", all_matches.len());
+    // for m in all_matches.iter() {
+    //     println!("m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}", m.pos.line.display(), m.pos.start_col, m.pos.end_col);
+    // }
 
     // Get matches relevant to this line that are considered novel
     let matches = matches_for_line(all_matches, line_num);
+
+    println!("matches.len(): {}", matches.len());
+    for m in matches.iter() {
+        println!("m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}", m.pos.line.display(), m.pos.start_col, m.pos.end_col);
+    }
 
     let mut iter = matches.into_iter().peekable();
     while let Some(m) = iter.next() {
