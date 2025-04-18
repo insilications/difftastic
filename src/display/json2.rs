@@ -455,7 +455,7 @@ fn add_changes_to_side<'s>(
                     // You could modify it here: *occupied_entry.get_mut() += 10;
                 }
                 Entry::Vacant(vacant_entry) => {
-                    let new_chunk = AllChunks::new();
+                    let mut new_chunk = AllChunks::new();
                     new_chunk.changes.push(Change2 {
                         start: (start_byte_idx as u32),
                         end: (end_byte_idx as u32),
