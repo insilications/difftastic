@@ -212,7 +212,7 @@ impl<'l> Line<'l> {
 #[derive(Debug, Serialize)]
 struct Side<'s> {
     line_number: u32,
-    changes: Vec<Change<'s>>,
+    changes: Vec<Change2<'s>>,
 }
 
 impl<'s> Side<'s> {
@@ -225,11 +225,10 @@ impl<'s> Side<'s> {
 }
 
 #[derive(Debug, Serialize)]
-struct Change<'c> {
+struct Change2<'c> {
     start: u32,
     end: u32,
     content: &'c str,
-    highlight: Highlight,
     highlight_type: &'c syntax::MatchKind,
 }
 
@@ -304,11 +303,10 @@ fn add_changes_to_side<'s>(
 
     let matches = matches_for_line(all_matches, line_num);
     for m in matches {
-        side.changes.push(Change {
+        side.changes.push(Change2 {
             start: m.pos.start_col,
             end: m.pos.end_col,
             content: &src_line[(m.pos.start_col as usize)..(m.pos.end_col as usize)],
-            highlight: Highlight::from_match(&m.kind),
             highlight_type: &m.kind
         })
     }
