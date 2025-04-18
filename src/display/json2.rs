@@ -10,7 +10,8 @@ use crate::{
         side_by_side::lines_with_novel,
     },
     lines::MaxLine,
-    parse::syntax::{self, MatchedPos, StringKind},
+    // parse::syntax::{self, MatchedPos, StringKind},
+    parse::syntax::{self, MatchedPos},
     summary::{DiffResult, FileContent, FileFormat},
 };
 
@@ -99,7 +100,7 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                 let lhs_lines = lhs_src.split('\n').collect::<Vec<&str>>();
                 let rhs_lines = rhs_src.split('\n').collect::<Vec<&str>>();
 
-                let (lhs_lines_with_novel, rhs_lines_with_novel) =
+                let (_, rhs_lines_with_novel) =
                     lines_with_novel(&summary.lhs_positions, &summary.rhs_positions);
 
                 let matched_lines = all_matched_lines_filled(
@@ -112,6 +113,7 @@ impl<'f> From<&'f DiffResult> for File<'f> {
 
                 let mut chunks = Vec::with_capacity(hunks.len());
                 for hunk in &hunks {
+                    println!("\nhunks");
                     let mut lines = BTreeMap::new();
 
                     let (start_i, end_i) = matched_lines_indexes_for_hunk(matched_lines, hunk, 0);
@@ -124,9 +126,10 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                         {
                             continue;
                         }
+                        println!("\naligned_lines");
 
                         let line = lines
-                            .entry((rhs_line_num.map(|l| l.0)))
+                            .entry(rhs_line_num.map(|l| l.0))
                             .or_insert_with(|| {
                                 Line::new(rhs_line_num.map(|l| l.0))
                             });
@@ -140,6 +143,7 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                         //     );
                         // }
                         if let Some(line_num) = rhs_line_num {
+                            println!("line_num: {}", line_num.display());
                             add_changes_to_side(
                                 line.rhs.as_mut().unwrap(),
                                 *line_num,
@@ -263,46 +267,46 @@ struct Change2<'c> {
     highlight_type: &'c syntax::MatchKind,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-// TODO: use syntax::TokenKind and syntax::AtomKind instead of this merged enum,
-// blocked by https://github.com/serde-rs/serde/issues/1402
-enum Highlight {
-    Delimiter,
-    Normal,
-    String,
-    Type,
-    Comment,
-    Keyword,
-    TreeSitterError,
-}
-
-impl Highlight {
-    fn from_match(kind: &syntax::MatchKind) -> Self {
-        use syntax::{AtomKind, MatchKind, TokenKind};
-
-        let highlight = match kind {
-            MatchKind::Ignored { highlight, .. } => highlight,
-            MatchKind::UnchangedToken { highlight, .. } => highlight,
-            MatchKind::Novel { highlight, .. } => highlight,
-            MatchKind::NovelWord { highlight, .. } => highlight,
-            MatchKind::UnchangedPartOfNovelItem { highlight, .. } => highlight,
-        };
-
-        match highlight {
-            TokenKind::Delimiter => Highlight::Delimiter,
-            TokenKind::Atom(atom) => match atom {
-                AtomKind::String(StringKind::StringLiteral) => Highlight::String,
-                AtomKind::String(StringKind::Text) => Highlight::Normal,
-                AtomKind::Keyword => Highlight::Keyword,
-                AtomKind::Comment => Highlight::Comment,
-                AtomKind::Type => Highlight::Type,
-                AtomKind::Normal => Highlight::Normal,
-                AtomKind::TreeSitterError => Highlight::TreeSitterError,
-            },
-        }
-    }
-}
+// #[derive(Debug, Serialize)]
+// #[serde(rename_all = "snake_case")]
+// // TODO: use syntax::TokenKind and syntax::AtomKind instead of this merged enum,
+// // blocked by https://github.com/serde-rs/serde/issues/1402
+// enum Highlight {
+//     Delimiter,
+//     Normal,
+//     String,
+//     Type,
+//     Comment,
+//     Keyword,
+//     TreeSitterError,
+// }
+//
+// impl Highlight {
+//     fn from_match(kind: &syntax::MatchKind) -> Self {
+//         use syntax::{AtomKind, MatchKind, TokenKind};
+//
+//         let highlight = match kind {
+//             MatchKind::Ignored { highlight, .. } => highlight,
+//             MatchKind::UnchangedToken { highlight, .. } => highlight,
+//             MatchKind::Novel { highlight, .. } => highlight,
+//             MatchKind::NovelWord { highlight, .. } => highlight,
+//             MatchKind::UnchangedPartOfNovelItem { highlight, .. } => highlight,
+//         };
+//
+//         match highlight {
+//             TokenKind::Delimiter => Highlight::Delimiter,
+//             TokenKind::Atom(atom) => match atom {
+//                 AtomKind::String(StringKind::StringLiteral) => Highlight::String,
+//                 AtomKind::String(StringKind::Text) => Highlight::Normal,
+//                 AtomKind::Keyword => Highlight::Keyword,
+//                 AtomKind::Comment => Highlight::Comment,
+//                 AtomKind::Type => Highlight::Type,
+//                 AtomKind::Normal => Highlight::Normal,
+//                 AtomKind::TreeSitterError => Highlight::TreeSitterError,
+//             },
+//         }
+//     }
+// }
 
 pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
     let files = diffs
@@ -339,6 +343,12 @@ fn add_changes_to_side<'s>(
     }
     let src_line = src_lines[line_idx];
 
+    println!("all_matches.len(): {}", all_matches.len());
+
+    for m in all_matches.iter() {
+        println!("m.pos.line: {} - m.pos.start_col: {} - m.pos.end_col: {}", m.pos.line.display(), m.pos.start_col, m.pos.end_col);
+    }
+
     // Get matches relevant to this line that are considered novel
     let matches = matches_for_line(all_matches, line_num);
 
@@ -355,7 +365,7 @@ fn add_changes_to_side<'s>(
         // Requirement 2: Merge consecutive Novel items
         if matches!(m.kind, MatchKind::Novel { .. }) {
             // This is the start of a potential sequence of Novel items
-            let mut current_start = m.pos.start_col;
+            let current_start = m.pos.start_col;
             let mut current_end = m.pos.end_col;
             let highlight_type_ref = &m.kind; // Use the kind from the first item
 
@@ -374,27 +384,13 @@ fn add_changes_to_side<'s>(
                 }
             }
 
-            // Ensure indices are within bounds before slicing
-            let start_byte_idx = current_start as usize;
-            let end_byte_idx = current_end as usize;
-
-            if start_byte_idx <= end_byte_idx && end_byte_idx <= src_line.len() {
-                // Push the single, potentially merged, Change2
-                side.changes.push(Change2 {
-                    start: current_start,
-                    end: current_end,
-                    content: &src_line[start_byte_idx..end_byte_idx],
-                    highlight_type: highlight_type_ref,
-                });
-            } else {
-                eprintln!(
-                    "Warning: Invalid range [{}, {}) for line '{}' (len {}). Skipping change.",
-                    start_byte_idx,
-                    end_byte_idx,
-                    src_line,
-                    src_line.len()
-                );
-            }
+            // push the single, potentially merged, Change2
+            side.changes.push(Change2 {
+                start: current_start,
+                end: current_end,
+                content: &src_line[(current_start as usize)..(current_end as usize)],
+                highlight_type: highlight_type_ref,
+            });
         } else {
             // This match is not MatchKind::Novel (e.g., could be NovelWord)
             // or it wasn't mergeable. Add it individually.

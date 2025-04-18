@@ -7,7 +7,7 @@ use std::{cell::Cell, env, fmt, hash::Hash, num::NonZeroU32};
 use line_numbers::LinePositions;
 use line_numbers::SingleLineSpan;
 use typed_arena::Arena;
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 
 use self::Syntax::*;
 use crate::lines::split_on_newlines;
