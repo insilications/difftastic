@@ -136,14 +136,6 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                                 Line::new(rhs_line_num.map(|l| l.0))
                             });
 
-                        // if let Some(line_num) = lhs_line_num {
-                        //     add_changes_to_side(
-                        //         line.lhs.as_mut().unwrap(),
-                        //         *line_num,
-                        //         &lhs_lines,
-                        //         &summary.lhs_positions,
-                        //     );
-                        // }
                         if let Some(line_num) = rhs_line_num {
                             println!("line_num: {}", line_num.display());
                             add_changes_to_side(
@@ -151,41 +143,10 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                                 *line_num,
                                 &rhs_lines,
                                 &summary.rhs_positions,
-                                &lines_for_all_chunks,
+                                &mut lines_for_all_chunks,
                             );
                         }
                     }
-                    // for (lhs_line_num, rhs_line_num) in aligned_lines {
-                    //     if !lhs_lines_with_novel.contains(&lhs_line_num.unwrap_or(LineNumber(0)))
-                    //         && !rhs_lines_with_novel
-                    //             .contains(&rhs_line_num.unwrap_or(LineNumber(0)))
-                    //     {
-                    //         continue;
-                    //     }
-                    //
-                    //     let line = lines
-                    //         .entry((lhs_line_num.map(|l| l.0), rhs_line_num.map(|l| l.0)))
-                    //         .or_insert_with(|| {
-                    //             Line::new(lhs_line_num.map(|l| l.0), rhs_line_num.map(|l| l.0))
-                    //         });
-                    //
-                    //     if let Some(line_num) = lhs_line_num {
-                    //         add_changes_to_side(
-                    //             line.lhs.as_mut().unwrap(),
-                    //             *line_num,
-                    //             &lhs_lines,
-                    //             &summary.lhs_positions,
-                    //         );
-                    //     }
-                    //     if let Some(line_num) = rhs_line_num {
-                    //         add_changes_to_side(
-                    //             line.rhs.as_mut().unwrap(),
-                    //             *line_num,
-                    //             &rhs_lines,
-                    //             &summary.rhs_positions,
-                    //         );
-                    //     }
-                    // }
 
                     chunks.push(lines.into_values().collect());
                 }
@@ -404,13 +365,51 @@ fn add_changes_to_side<'s>(
                 }
             }
 
-            // push the single, potentially merged, Change2
-            side.changes.push(Change2 {
-                start: current_start,
-                end: current_end,
-                content: &src_line[(current_start as usize)..(current_end as usize)],
-                highlight_type: highlight_type_ref,
-            });
+            let entry_result = lines_for_all_chunks.entry(line_num.0); // map is mutably borrowed
+            match entry_result {
+                Entry::Occupied(mut occupied_entry) => {
+                    let changes: &Vec<Change2> = &occupied_entry.get().changes;
+                    let mut found: bool = false;
+                    for c in changes.iter() {
+                        if c.start == current_start && c.end == current_end {
+                            found = true;
+                        }
+                    }
+                    if !found {
+                        occupied_entry.get_mut().changes.push(Change2 {
+                            start: current_start,
+                            end: current_end,
+                            content: &src_line[(current_start as usize)..(current_end as usize)],
+                            highlight_type: highlight_type_ref,
+                        });
+                        // push the single, potentially merged, Change2
+                        side.changes.push(Change2 {
+                            start: current_start,
+                            end: current_end,
+                            content: &src_line[(current_start as usize)..(current_end as usize)],
+                            highlight_type: highlight_type_ref,
+                        });
+                    }
+                }
+                Entry::Vacant(vacant_entry) => {
+                    let mut new_chunk = AllChunks::new();
+                    new_chunk.changes.push(Change2 {
+                        start: current_start,
+                        end: current_end,
+                        content: &src_line[(current_start as usize)..(current_end as usize)],
+                        highlight_type: highlight_type_ref,
+                    });
+                    vacant_entry.insert(new_chunk);
+
+                    // push the single, potentially merged, Change2
+                    side.changes.push(Change2 {
+                        start: current_start,
+                        end: current_end,
+                        content: &src_line[(current_start as usize)..(current_end as usize)],
+                        highlight_type: highlight_type_ref,
+                    });
+                }
+            }
         } else {
             // This match is not MatchKind::Novel (e.g., could be NovelWord)
             // or it wasn't mergeable. Add it individually.
@@ -477,13 +476,6 @@ fn add_changes_to_side<'s>(
                     });
                 }
             }
-
-            side.changes.push(Change2 {
-                start: (start_byte_idx as u32),
-                end: (end_byte_idx as u32),
-                content: &src_line[start_byte_idx..end_byte_idx],
-                highlight_type: &m.kind,
-            });
         }
     }
 }
