@@ -131,9 +131,9 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                         println!("\naligned_lines");
 
                         let line = lines
-                            .entry(rhs_line_num.map(|l| l.0))
+                            .entry(rhs_line_num.unwrap().0)
                             .or_insert_with(|| {
-                                Line::new(rhs_line_num.map(|l| l.0))
+                                Line::new(Some(rhs_line_num.unwrap().0))
                             });
 
                         if let Some(line_num) = rhs_line_num {
