@@ -58,6 +58,7 @@ impl<'f> File<'f> {
 }
 
 impl<'f> From<&'f DiffResult> for File<'f> {
+    // This function converts a DiffResult (containing information about file differences, including source content and matched positions) into a File struct suitable for JSON serialization. It calculates hunks of changes, filters relevant lines, and delegates the extraction of specific changes within lines to add_changes_to_side.
     fn from(summary: &'f DiffResult) -> Self {
         match (&summary.lhs_src, &summary.rhs_src) {
             (FileContent::Text(lhs_src), FileContent::Text(rhs_src)) => {
@@ -356,7 +357,6 @@ fn add_changes_to_side<'s>(
 
             // Peek ahead to see if the *next item in the iterator* is also Novel
             while let Some(next_m) = iter.peek() {
-                // MODIFICATION HERE: Removed the adjacency check (&& next_m.pos.start_col == current_end)
                 // Now, we merge if the *next match* in the filtered list is also Novel.
                 if matches!(next_m.kind, MatchKind::Novel { .. }) {
                     // Extend the range to the end of the next item
