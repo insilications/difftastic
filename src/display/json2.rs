@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use line_numbers::LineNumber;
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 
 use crate::{
     display::{
@@ -299,16 +299,89 @@ fn add_changes_to_side<'s>(
     src_lines: &[&'s str],
     all_matches: &'s [MatchedPos],
 ) {
-    let src_line = src_lines[line_num.0 as usize];
+    use syntax::{MatchKind};
+    // Ensure line_num is valid before indexing
+    let line_idx = line_num.0 as usize;
+    if line_idx >= src_lines.len() {
+        eprintln!("Warning: Invalid line number {} encountered.", line_num.0);
+        return;
+    }
+    let src_line = src_lines[line_idx];
 
+    // Get matches relevant to this line that are considered novel
     let matches = matches_for_line(all_matches, line_num);
-    for m in matches {
-        side.changes.push(Change2 {
-            start: m.pos.start_col,
-            end: m.pos.end_col,
-            content: &src_line[(m.pos.start_col as usize)..(m.pos.end_col as usize)],
-            highlight_type: &m.kind
-        })
+
+    let mut iter = matches.into_iter().peekable();
+    while let Some(m) = iter.next() {
+        // Requirement 1: Ignore specified kinds.
+        match m.kind {
+            MatchKind::UnchangedPartOfNovelItem { .. } | MatchKind::UnchangedToken { .. } => {
+                continue; // Skip this match
+            }
+            _ => {} // Process other kinds allowed by matches_for_line
+        }
+
+        // Requirement 2: Merge consecutive Novel items
+        if matches!(m.kind, MatchKind::Novel { .. }) {
+            // This is the start of a potential sequence of Novel items
+            let mut current_start = m.pos.start_col;
+            let mut current_end = m.pos.end_col;
+            let highlight_type_ref = &m.kind; // Use the kind from the first item
+
+            // Peek ahead to see if the *next item in the iterator* is also Novel
+            while let Some(next_m) = iter.peek() {
+                // MODIFICATION HERE: Removed the adjacency check (&& next_m.pos.start_col == current_end)
+                // Now, we merge if the *next match* in the filtered list is also Novel.
+                if matches!(next_m.kind, MatchKind::Novel { .. }) {
+                    // Extend the range to the end of the next item
+                    current_end = next_m.pos.end_col;
+                    // Consume the peeked item as it's now part of the merged range
+                    iter.next();
+                } else {
+                    // The next item is not a Novel item, stop merging
+                    break;
+                }
+            }
+
+            // Ensure indices are within bounds before slicing
+            let start_byte_idx = current_start as usize;
+            let end_byte_idx = current_end as usize;
+
+            if start_byte_idx <= end_byte_idx && end_byte_idx <= src_line.len() {
+                // Push the single, potentially merged, Change2
+                side.changes.push(Change2 {
+                    start: current_start,
+                    end: current_end,
+                    content: &src_line[start_byte_idx..end_byte_idx],
+                    highlight_type: highlight_type_ref,
+                });
+            } else {
+                 eprintln!(
+                    "Warning: Invalid range [{}, {}) for line '{}' (len {}). Skipping change.",
+                    start_byte_idx, end_byte_idx, src_line, src_line.len()
+                 );
+            }
+
+        } else {
+            // This match is not MatchKind::Novel (e.g., could be NovelWord)
+            // or it wasn't mergeable. Add it individually.
+            let start_byte_idx = m.pos.start_col as usize;
+            let end_byte_idx = m.pos.end_col as usize;
+
+            if start_byte_idx <= end_byte_idx && end_byte_idx <= src_line.len() {
+                side.changes.push(Change2 {
+                    start: m.pos.start_col,
+                    end: m.pos.end_col,
+                    content: &src_line[start_byte_idx..end_byte_idx],
+                    highlight_type: &m.kind,
+                });
+            } else {
+                 eprintln!(
+                    "Warning: Invalid range [{}, {}) for line '{}' (len {}). Skipping change.",
+                    start_byte_idx, end_byte_idx, src_line, src_line.len()
+                 );
+            }
+        }
     }
 }
 
