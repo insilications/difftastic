@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use line_numbers::LineNumber;
 use serde::{Serialize, Serializer, ser::SerializeStruct};
@@ -111,6 +112,7 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                 );
                 let mut matched_lines = &matched_lines[..];
 
+                let mut lines_for_all_chunks: BTreeMap<u32, AllChunks<'f>> = BTreeMap::new();
                 let mut chunks = Vec::with_capacity(hunks.len());
                 for hunk in &hunks {
                     println!("\nhunks");
@@ -149,6 +151,7 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                                 *line_num,
                                 &rhs_lines,
                                 &summary.rhs_positions,
+                                &lines_for_all_chunks,
                             );
                         }
                     }
@@ -259,6 +262,18 @@ impl<'s> Side<'s> {
     }
 }
 
+struct AllChunks<'c> {
+    changes: Vec<Change2<'c>>,
+}
+
+impl<'c> AllChunks<'c> {
+    fn new() -> AllChunks<'c> {
+        AllChunks {
+            changes: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct Change2<'c> {
     start: u32,
@@ -333,6 +348,7 @@ fn add_changes_to_side<'s>(
     line_num: LineNumber,
     src_lines: &[&'s str],
     all_matches: &'s [MatchedPos],
+    lines_for_all_chunks: &mut BTreeMap<u32, AllChunks<'s>>
 ) {
     use syntax::MatchKind;
     // Ensure line_num is valid before indexing
@@ -400,6 +416,67 @@ fn add_changes_to_side<'s>(
             // or it wasn't mergeable. Add it individually.
             let start_byte_idx = m.pos.start_col as usize;
             let end_byte_idx = m.pos.end_col as usize;
+
+            // let line = lines
+            //     .entry(rhs_line_num.map(|l| l.0))
+            //     .or_insert_with(|| {
+            //         Line::new(rhs_line_num.map(|l| l.0))
+            //     });
+            //
+            // if lines_for_all_chunks.contains_key(line_num.0) {
+            //
+            // }
+
+            let entry_result = lines_for_all_chunks.entry(line_num.0); // map is mutably borrowed
+            match entry_result {
+                Entry::Occupied(mut occupied_entry) => {
+                    let changes: &Vec<Change2> = &occupied_entry.get().changes;
+                    let mut found: bool = false;
+                    for c in changes.iter() {
+                        if c.start == (start_byte_idx as u32) && c.end == (end_byte_idx as u32) {
+                            found = true;
+                        }
+                    }
+                    if !found {
+                        occupied_entry.get_mut().changes.push(Change2 {
+                            start: (start_byte_idx as u32),
+                            end: (end_byte_idx as u32),
+                            content: &src_line[start_byte_idx..end_byte_idx],
+                            highlight_type: &m.kind,
+                        });
+                        side.changes.push(Change2 {
+                            start: (start_byte_idx as u32),
+                            end: (end_byte_idx as u32),
+                            content: &src_line[start_byte_idx..end_byte_idx],
+                            highlight_type: &m.kind,
+                        });
+                    }
+                    // println!("  Key '{}' exists with value: {}", occupied_entry.key(), occupied_entry.get());
+                    // You could modify it here: *occupied_entry.get_mut() += 10;
+                }
+                Entry::Vacant(vacant_entry) => {
+                    let new_chunk = AllChunks::new();
+                    new_chunk.changes.push(Change2 {
+                        start: (start_byte_idx as u32),
+                        end: (end_byte_idx as u32),
+                        content: &src_line[start_byte_idx..end_byte_idx],
+                        highlight_type: &m.kind,
+                    });
+                    vacant_entry.insert(new_chunk);
+                    // vacant_entry.insert(Vec::new(Change2 {
+                    //     start: (start_byte_idx as u32),
+                    //     end: (end_byte_idx as u32),
+                    //     content: &src_line[start_byte_idx..end_byte_idx],
+                    //     highlight_type: &m.kind,
+                    // }));
+                    side.changes.push(Change2 {
+                        start: (start_byte_idx as u32),
+                        end: (end_byte_idx as u32),
+                        content: &src_line[start_byte_idx..end_byte_idx],
+                        highlight_type: &m.kind,
+                    });
+                }
+            }
 
             side.changes.push(Change2 {
                 start: (start_byte_idx as u32),
