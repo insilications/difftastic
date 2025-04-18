@@ -116,7 +116,7 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                 let mut chunks = Vec::with_capacity(hunks.len());
                 for hunk in &hunks {
                     println!("\nhunks");
-                    let mut lines = BTreeMap::new();
+                    let mut lines: BTreeMap<Option<u32>, Line<'f>> = BTreeMap::new();
 
                     let (start_i, end_i) = matched_lines_indexes_for_hunk(matched_lines, hunk, 0);
                     let aligned_lines = &matched_lines[start_i..end_i];
@@ -130,16 +130,17 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                         }
                         println!("\naligned_lines");
 
-                        let line = lines
-                            .entry(rhs_line_num.unwrap().0)
-                            .or_insert_with(|| {
-                                Line::new(Some(rhs_line_num.unwrap().0))
-                            });
+                        // let line = lines
+                        //     .entry(rhs_line_num.unwrap().0)
+                        //     .or_insert_with(|| {
+                        //         Line::new(Some(rhs_line_num.unwrap().0))
+                        //     });
 
                         if let Some(line_num) = rhs_line_num {
                             println!("line_num: {}", line_num.display());
                             add_changes_to_side(
-                                line.rhs.as_mut().unwrap(),
+                                // line.rhs.as_mut().unwrap(),
+                                &mut lines,
                                 *line_num,
                                 &rhs_lines,
                                 &summary.rhs_positions,
@@ -148,7 +149,9 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                         }
                     }
 
-                    chunks.push(lines.into_values().collect());
+                    if !lines.is_empty() {
+                        chunks.push(lines.into_values().collect());
+                    }
                 }
 
                 File::with_sections(&summary.file_format, &summary.display_path, chunks)
@@ -305,11 +308,12 @@ pub(crate) fn print(diff: &DiffResult) {
 }
 
 fn add_changes_to_side<'s>(
-    side: &mut Side<'s>,
+    // side: &mut Side<'s>,
+    lines: &mut BTreeMap<Option<u32>, Line<'s>>,
     line_num: LineNumber,
     src_lines: &[&'s str],
     all_matches: &'s [MatchedPos],
-    lines_for_all_chunks: &mut BTreeMap<u32, AllChunks<'s>>
+    lines_for_all_chunks: &mut BTreeMap<u32, AllChunks<'s>>,
 ) {
     use syntax::MatchKind;
     // Ensure line_num is valid before indexing
@@ -382,8 +386,14 @@ fn add_changes_to_side<'s>(
                             content: &src_line[(current_start as usize)..(current_end as usize)],
                             highlight_type: highlight_type_ref,
                         });
+
+                        let line = lines
+                            .entry(Some(line_num.0))
+                            .or_insert_with(|| {
+                                Line::new(Some(line_num.0))
+                            });
                         // push the single, potentially merged, Change2
-                        side.changes.push(Change2 {
+                        line.rhs.as_mut().unwrap().changes.push(Change2 {
                             start: current_start,
                             end: current_end,
                             content: &src_line[(current_start as usize)..(current_end as usize)],
@@ -401,8 +411,13 @@ fn add_changes_to_side<'s>(
                     });
                     vacant_entry.insert(new_chunk);
 
+                    let line = lines
+                            .entry(Some(line_num.0))
+                            .or_insert_with(|| {
+                                Line::new(Some(line_num.0))
+                            });
                     // push the single, potentially merged, Change2
-                    side.changes.push(Change2 {
+                    line.rhs.as_mut().unwrap().changes.push(Change2 {
                         start: current_start,
                         end: current_end,
                         content: &src_line[(current_start as usize)..(current_end as usize)],
@@ -443,7 +458,13 @@ fn add_changes_to_side<'s>(
                             content: &src_line[start_byte_idx..end_byte_idx],
                             highlight_type: &m.kind,
                         });
-                        side.changes.push(Change2 {
+
+                        let line = lines
+                            .entry(Some(line_num.0))
+                            .or_insert_with(|| {
+                                Line::new(Some(line_num.0))
+                            });
+                        line.rhs.as_mut().unwrap().changes.push(Change2 {
                             start: (start_byte_idx as u32),
                             end: (end_byte_idx as u32),
                             content: &src_line[start_byte_idx..end_byte_idx],
@@ -462,13 +483,19 @@ fn add_changes_to_side<'s>(
                         highlight_type: &m.kind,
                     });
                     vacant_entry.insert(new_chunk);
+
                     // vacant_entry.insert(Vec::new(Change2 {
                     //     start: (start_byte_idx as u32),
                     //     end: (end_byte_idx as u32),
                     //     content: &src_line[start_byte_idx..end_byte_idx],
                     //     highlight_type: &m.kind,
                     // }));
-                    side.changes.push(Change2 {
+                    let line = lines
+                            .entry(Some(line_num.0))
+                            .or_insert_with(|| {
+                                Line::new(Some(line_num.0))
+                            });
+                    line.rhs.as_mut().unwrap().changes.push(Change2 {
                         start: (start_byte_idx as u32),
                         end: (end_byte_idx as u32),
                         content: &src_line[start_byte_idx..end_byte_idx],
