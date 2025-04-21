@@ -95,11 +95,11 @@ pub(crate) async fn start_lsp() {
             .service(router)
     });
 
-    tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
-        .with_ansi(false)
-        .with_writer(std::io::stderr)
-        .init();
+    // tracing_subscriber::fmt()
+    //     .with_max_level(Level::INFO)
+    //     .with_ansi(false)
+    //     .with_writer(std::io::stderr)
+    //     .init();
 
     // Prefer truly asynchronous piped stdin/stdout without blocking tasks.
     #[cfg(unix)]

@@ -97,6 +97,8 @@ use crate::{
     parse::tree_sitter_parser as tsp,
 };
 
+use tracing::{Level};
+
 extern crate pretty_env_logger;
 
 /// Terminate the process if we get SIGPIPE.
@@ -115,13 +117,19 @@ fn reset_sigpipe() {
 /// The entrypoint.
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    pretty_env_logger::try_init_timed_custom_env("DFT_LOG")
-        .expect("The logger has not been previously initialized");
+    // pretty_env_logger::try_init_timed_custom_env("DFT_LOG")
+    //     .expect("The logger has not been previously initialized");
     reset_sigpipe();
+
+        tracing_subscriber::fmt()
+        .with_max_level(Level::INFO)
+        .with_ansi(false)
+        .with_writer(std::io::stderr)
+        .init();
 
     if options::parse_lsp_opt() {
         println!("LSP set");
-        lsp::start_lsp();
+        lsp::start_lsp().await;
     } else {
 
     match options::parse_args() {
