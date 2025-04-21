@@ -40,6 +40,7 @@ mod hash;
 mod line_parser;
 mod lines;
 mod options;
+mod lsp;
 mod parse;
 mod summary;
 mod version;
@@ -112,10 +113,16 @@ fn reset_sigpipe() {
 }
 
 /// The entrypoint.
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     pretty_env_logger::try_init_timed_custom_env("DFT_LOG")
         .expect("The logger has not been previously initialized");
     reset_sigpipe();
+
+    if options::parse_lsp_opt() {
+        println!("LSP set");
+        lsp::start_lsp();
+    } else {
 
     match options::parse_args() {
         Mode::DumpTreeSitter {
@@ -253,6 +260,7 @@ fn main() {
             rhs_permissions,
             display_path,
             renamed,
+            lsp,
         } => {
             if lhs_path == rhs_path {
                 let is_dir = match &lhs_path {
@@ -331,6 +339,7 @@ fn main() {
                     }
                 }
                 _ => {
+                    println!("lhs_path: {} - rhs_path: {}", lhs_path, rhs_path);
                     let diff_result = diff_file(
                         &display_path,
                         renamed,
@@ -367,6 +376,7 @@ fn main() {
             std::process::exit(exit_code);
         }
     };
+    }
 }
 
 /// Print a diff between two files.

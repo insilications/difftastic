@@ -321,6 +321,11 @@ Higher values will allow difftastic to perform a structural diff in more cases. 
                 .env("DFT_SORT_PATHS")
                 .help("When diffing a directory, output the results sorted by path. This is slower.")
         )
+        .arg(
+            Arg::new("lsp").long("lsp")
+                .action(ArgAction::SetTrue)
+                .help("Enable LSP server mode.")
+        )
         .arg_required_else_help(true)
 }
 
@@ -479,6 +484,8 @@ pub(crate) enum Mode {
         display_path: String,
         /// If this file has been renamed, a description of the change.
         renamed: Option<String>,
+        // LSP server
+        lsp: bool,
     },
     DiffFromConflicts {
         diff_options: DiffOptions,
@@ -630,6 +637,11 @@ fn parse_overrides_or_die(raw_overrides: &[String]) -> Vec<(LanguageOverride, Ve
     combined_overrides
 }
 
+pub(crate) fn parse_lsp_opt() -> bool {
+    let matches = app().get_matches();
+    matches.get_flag("lsp")
+}
+
 /// Parse CLI arguments passed to the binary.
 pub(crate) fn parse_args() -> Mode {
     let matches = app().get_matches();
@@ -649,6 +661,8 @@ pub(crate) fn parse_args() -> Mode {
     let use_color = should_use_color(color_output);
 
     let ignore_comments = matches.get_flag("ignore-comments");
+
+    let lsp = matches.get_flag("lsp");
 
     let mut raw_overrides: Vec<String> = vec![];
     if let Some(overrides) = matches.get_many("override") {
@@ -900,6 +914,7 @@ pub(crate) fn parse_args() -> Mode {
         rhs_permissions,
         display_path,
         renamed,
+        lsp,
     }
 }
 
