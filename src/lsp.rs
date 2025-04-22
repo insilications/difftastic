@@ -1,6 +1,9 @@
 use std::ops::ControlFlow;
 use std::time::Duration;
 
+// Change the import to directly access the external crate since custom_lsp_types is its own crate
+use difftastic::custom_lsp_types::{MyInitializeResult, MyServerCapabilities};
+
 use async_lsp::ClientSocket;
 use async_lsp::client_monitor::ClientProcessMonitorLayer;
 use async_lsp::concurrency::ConcurrencyLayer;
@@ -44,12 +47,20 @@ pub(crate) async fn start_lsp() {
         router
             .request::<request::Initialize, _>(|_, params| async move {
                 eprintln!("Initialize with {params:?}");
-                Ok(InitializeResult {
-                    capabilities: ServerCapabilities {
-                        hover_provider: Some(HoverProviderCapability::Simple(true)),
-                        definition_provider: Some(OneOf::Left(true)),
-                        ..ServerCapabilities::default()
+                Ok(MyInitializeResult {
+                    capabilities: MyServerCapabilities {
+                        standard: ServerCapabilities {
+                            hover_provider: Some(HoverProviderCapability::Simple(true)),
+                            definition_provider: Some(OneOf::Left(true)),
+                            ..ServerCapabilities::default()
+                        },
+                        diff: Some(true),
                     },
+                    // capabilities: ServerCapabilities {
+                    //     hover_provider: Some(HoverProviderCapability::Simple(true)),
+                    //     definition_provider: Some(OneOf::Left(true)),
+                    //     ..ServerCapabilities::default()
+                    // },
                     server_info: Some(ServerInfo {
                         name: "difftastic-lsp".to_string(),
                         version: Some("0.1.0".to_string()),
