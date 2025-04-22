@@ -160,3 +160,7 @@ name = "difft"
 path = "src/main.rs"
 
 [features]
+
+
+[patch.crates-io]
+async-lsp = { path = "/aot/stuff/dev/async-lsp/" }

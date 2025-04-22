@@ -10,7 +10,7 @@ use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use lsp_types::{
     Hover, HoverContents, HoverProviderCapability, InitializeResult, MarkedString, MessageType, OneOf,
-    ServerCapabilities, ShowMessageParams, notification, request,
+    ServerCapabilities, ServerInfo, ShowMessageParams, notification, request,
 };
 use tower::ServiceBuilder;
 use tracing::{Level, info};
@@ -50,7 +50,10 @@ pub(crate) async fn start_lsp() {
                         definition_provider: Some(OneOf::Left(true)),
                         ..ServerCapabilities::default()
                     },
-                    server_info: None,
+                    server_info: Some(ServerInfo {
+                        name: "difftastic-lsp".to_string(),
+                        version: Some("0.1.0".to_string()),
+                    }),
                     offset_encoding: Some("utf-32".to_string()),
                 })
             })
