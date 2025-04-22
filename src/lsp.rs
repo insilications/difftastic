@@ -58,7 +58,7 @@ pub(crate) async fn start_lsp() {
                         name: "difftastic-lsp".to_string(),
                         version: Some("0.1.0".to_string()),
                     }),
-                    offset_encoding: Some("utf-32".to_string()),
+                    offset_encoding: Some("utf-8".to_string()),
                 })
                 // Ok(MyInitializeResult {
                 //     capabilities: MyServerCapabilities {
@@ -96,28 +96,13 @@ pub(crate) async fn start_lsp() {
                 }
             })
             // .request::<request::GotoDefinition, _>(|_, _| async move { unimplemented!("Not yet implemented!") })
-            .notification::<notification::Initialized>(|_, _| {
-                info!("notification::Initialized");
-                ControlFlow::Continue(())
-            })
-            .notification::<notification::DidChangeConfiguration>(|_, _| {
-                info!("notification::DidChangeConfiguration");
-                ControlFlow::Continue(())
-            })
-            .notification::<notification::DidOpenTextDocument>(|_, _| {
-                info!("notification::DidOpenTextDocument");
-                ControlFlow::Continue(())
-            })
-            .notification::<notification::DidChangeTextDocument>(|_, _| {
-                info!("notification::DidChangeTextDocument");
-                ControlFlow::Continue(())
-            })
-            .notification::<notification::DidCloseTextDocument>(|_, _| {
-                info!("notification::DidCloseTextDocument");
-                ControlFlow::Continue(())
-            })
+            .notification::<notification::Initialized>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidChangeConfiguration>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidOpenTextDocument>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidChangeTextDocument>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidCloseTextDocument>(|_, _| ControlFlow::Continue(()))
             .event::<TickEvent>(|st, _| {
-                info!("tick");
+                // info!("tick");
                 st.counter += 1;
                 ControlFlow::Continue(())
             });

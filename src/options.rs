@@ -7,13 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{crate_authors, crate_description, value_parser, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, crate_authors, crate_description, value_parser};
 use crossterm::tty::IsTty;
 
 use crate::{
     display::style::BackgroundColor,
     exit_codes::EXIT_BAD_ARGUMENTS,
-    parse::guess_language::{language_override_from_name, LanguageOverride},
+    parse::guess_language::{LanguageOverride, language_override_from_name},
     version::VERSION,
 };
 
@@ -326,7 +326,12 @@ Higher values will allow difftastic to perform a structural diff in more cases. 
                 .action(ArgAction::SetTrue)
                 .help("Enable LSP server mode.")
         )
-        .arg_required_else_help(true)
+        .arg(
+            Arg::new("stdio").long("stdio")
+                .action(ArgAction::SetTrue)
+                .help("Enable standard input/output mode.")
+        )
+    .arg_required_else_help(true)
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -403,11 +408,7 @@ impl From<std::fs::Permissions> for FilePermissions {
 #[cfg(not(unix))]
 impl From<std::fs::Permissions> for FilePermissions {
     fn from(perms: std::fs::Permissions) -> Self {
-        let s = if perms.readonly() {
-            "readonly"
-        } else {
-            "read-write"
-        };
+        let s = if perms.readonly() { "readonly" } else { "read-write" };
         Self(s.to_owned())
     }
 }
@@ -517,16 +518,8 @@ pub(crate) enum Mode {
 }
 
 fn common_path_suffix(lhs_path: &Path, rhs_path: &Path) -> Option<String> {
-    let lhs_rev_components = lhs_path
-        .components()
-        .map(|c| c.as_os_str())
-        .rev()
-        .collect::<Vec<_>>();
-    let rhs_rev_components = rhs_path
-        .components()
-        .map(|c| c.as_os_str())
-        .rev()
-        .collect::<Vec<_>>();
+    let lhs_rev_components = lhs_path.components().map(|c| c.as_os_str()).rev().collect::<Vec<_>>();
+    let rhs_rev_components = rhs_path.components().map(|c| c.as_os_str()).rev().collect::<Vec<_>>();
 
     let mut common_components = vec![];
     for (lhs_component, rhs_component) in lhs_rev_components.iter().zip(rhs_rev_components.iter()) {
@@ -556,10 +549,7 @@ fn is_git_tmpfile(path: &Path) -> bool {
         return false;
     }
 
-    components[0]
-        .as_os_str()
-        .to_string_lossy()
-        .starts_with("git-blob-")
+    components[0].as_os_str().to_string_lossy().starts_with("git-blob-")
 }
 
 fn build_display_path(lhs_path: &FileArgument, rhs_path: &FileArgument) -> String {
@@ -580,9 +570,7 @@ fn build_display_path(lhs_path: &FileArgument, rhs_path: &FileArgument) -> Strin
                 }
             }
         }
-        (FileArgument::NamedPath(p), _) | (_, FileArgument::NamedPath(p)) => {
-            p.display().to_string()
-        }
+        (FileArgument::NamedPath(p), _) | (_, FileArgument::NamedPath(p)) => p.display().to_string(),
         (FileArgument::DevNull, _) | (_, FileArgument::DevNull) => "/dev/null".into(),
         (FileArgument::Stdin, FileArgument::Stdin) => "-".into(),
     }
@@ -600,7 +588,9 @@ fn parse_overrides_or_die(raw_overrides: &[String]) -> Vec<(LanguageOverride, Ve
                         overrides.push((language_override, vec![pattern]));
                     } else {
                         eprintln!("No such language '{}'", lang_name);
-                        eprintln!("See --list-languages for the names of all languages available. Language overrides are case insensitive.");
+                        eprintln!(
+                            "See --list-languages for the names of all languages available. Language overrides are case insensitive."
+                        );
                         invalid_syntax = true;
                     }
                 }
@@ -722,7 +712,8 @@ pub(crate) fn parse_args() -> Mode {
         "inline" => DisplayMode::Inline,
         "json" => {
             // if env::var("DFT_UNSTABLE").is_err() {
-            //     eprintln!("JSON output is an unstable feature and its format may change in future. To enable JSON output, set the environment variable DFT_UNSTABLE=yes.");
+            //     eprintln!("JSON output is an unstable feature and its format may change in future. To enable JSON
+            // output, set the environment variable DFT_UNSTABLE=yes.");
             //     std::process::exit(EXIT_BAD_ARGUMENTS);
             // }
 
@@ -744,10 +735,7 @@ pub(crate) fn parse_args() -> Mode {
         _ => unreachable!("clap has already validated the values"),
     };
 
-    let syntax_highlight = matches
-        .get_one::<String>("syntax-highlight")
-        .map(|s| s.as_str())
-        == Some("on");
+    let syntax_highlight = matches.get_one::<String>("syntax-highlight").map(|s| s.as_str()) == Some("on");
 
     let sort_paths = matches.get_flag("sort-paths");
 
@@ -788,10 +776,7 @@ pub(crate) fn parse_args() -> Mode {
         strip_cr,
     };
 
-    let args = matches
-        .get_raw("paths")
-        .unwrap_or_default()
-        .collect::<Vec<_>>();
+    let args = matches.get_raw("paths").unwrap_or_default().collect::<Vec<_>>();
     info!("CLI arguments: {:?}", args);
 
     // Print git environment variables so we can see the additional
@@ -803,9 +788,7 @@ pub(crate) fn parse_args() -> Mode {
     }
 
     // TODO: document these different ways of calling difftastic.
-    let (display_path, lhs_path, rhs_path, lhs_permissions, rhs_permissions, renamed) = match &args
-        [..]
-    {
+    let (display_path, lhs_path, rhs_path, lhs_permissions, rhs_permissions, renamed) = match &args[..] {
         [lhs_path, rhs_path] => {
             let lhs_arg = FileArgument::from_cli_argument(lhs_path);
             let rhs_arg = FileArgument::from_cli_argument(rhs_path);
@@ -814,16 +797,17 @@ pub(crate) fn parse_args() -> Mode {
             let lhs_permissions = lhs_arg.permissions();
             let rhs_permissions = rhs_arg.permissions();
 
-            (
-                display_path,
-                lhs_arg,
-                rhs_arg,
-                lhs_permissions,
-                rhs_permissions,
-                None,
-            )
+            (display_path, lhs_arg, rhs_arg, lhs_permissions, rhs_permissions, None)
         }
-        [display_path, lhs_tmp_file, _lhs_hash, lhs_mode, rhs_tmp_file, _rhs_hash, rhs_mode] => {
+        [
+            display_path,
+            lhs_tmp_file,
+            _lhs_hash,
+            lhs_mode,
+            rhs_tmp_file,
+            _rhs_hash,
+            rhs_mode,
+        ] => {
             // https://git-scm.com/docs/git#Documentation/git.txt-codeGITEXTERNALDIFFcode
             (
                 display_path.to_string_lossy().to_string(),
@@ -834,8 +818,17 @@ pub(crate) fn parse_args() -> Mode {
                 None,
             )
         }
-        [old_name, lhs_tmp_file, _lhs_hash, lhs_mode, rhs_tmp_file, _rhs_hash, rhs_mode, new_name, _metainfo] =>
-        {
+        [
+            old_name,
+            lhs_tmp_file,
+            _lhs_hash,
+            lhs_mode,
+            rhs_tmp_file,
+            _rhs_hash,
+            rhs_mode,
+            new_name,
+            _metainfo,
+        ] => {
             // Rename file.
             // TODO: where does git document these 9 arguments?
             // (See run_external_diff() in diff.c in git source code.)

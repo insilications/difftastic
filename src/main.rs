@@ -123,7 +123,7 @@ async fn main() {
     //     .init();
 
     if options::parse_lsp_opt() {
-        println!("LSP set");
+        // println!("LSP set");
         lsp::start_lsp().await;
     } else {
         match options::parse_args() {
