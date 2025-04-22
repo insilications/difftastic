@@ -7,7 +7,11 @@ license = "MIT"
 version = "0.64.0"
 authors = ["Wilfred Hughes <me@wilfred.me.uk>"]
 keywords = ["diff", "syntax"]
-categories = ["development-tools", "command-line-utilities", "parser-implementations"]
+categories = [
+        "development-tools",
+        "command-line-utilities",
+        "parser-implementations",
+]
 edition = "2021"
 # Goal: support at least 12 months of Rust versions, and be
 # conservative about upgrades to help packagers.
@@ -41,7 +45,7 @@ rustc-hash = "2.0.0"
 strsim = "0.10.0"
 lazy_static = "1.4.0"
 libc = "0.2.108"
-log = "0.4.14"
+log = "0.4.27"
 pretty_env_logger = "0.5.0"
 
 mimalloc = { version = "0.1.28", default-features = false }
@@ -108,11 +112,23 @@ tree-sitter-toml-ng = "0.7.0"
 tree-sitter-typescript = "0.23.2"
 tree-sitter-xml = "0.7.0"
 tree-sitter-yaml = "0.7.0"
-async-lsp = { version = "0.2.2", features = ["async-io", "omni-trait", "tokio", "tracing"] }
-tokio = { version = "1.44.2", features = ["io-std", "io-util", "macros", "process", "rt", "time"] }
+async-lsp = { version = "0.2.2", features = [
+        "async-io",
+        "omni-trait",
+        "tokio",
+        "tracing",
+] }
+tokio = { version = "1.44.2", features = [
+        "io-std",
+        "io-util",
+        "macros",
+        "process",
+        "rt",
+        "time",
+] }
 async-io = "2.4.0"
 futures = { version = "0.3.31", features = ["async-await", "std"] }
-lsp-types = "0.95.0"
+lsp-types = { version = "0.97.0", features = ["proposed"] }
 tower-layer = "0.3.3"
 tower-service = "0.3.3"
 async-process = "2.3.0"

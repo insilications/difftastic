@@ -2,7 +2,6 @@
 //!
 //! For usage instructions and advice on contributing, see [the
 //! manual](http://difftastic.wilfred.me.uk/).
-//!
 
 // This tends to trigger on larger tuples of simple types, and naming
 // them would probably be worse for readability.
@@ -39,8 +38,8 @@ mod files;
 mod hash;
 mod line_parser;
 mod lines;
-mod options;
 mod lsp;
+mod options;
 mod parse;
 mod summary;
 mod version;
@@ -55,8 +54,8 @@ use mimalloc::MiMalloc;
 use options::FilePermissions;
 use options::USAGE;
 
-use crate::conflicts::apply_conflict_markers;
 use crate::conflicts::START_LHS_MARKER;
+use crate::conflicts::apply_conflict_markers;
 use crate::diff::changes::ChangeMap;
 use crate::diff::dijkstra::ExceededGraphLimit;
 use crate::diff::{dijkstra, unchanged};
@@ -65,11 +64,10 @@ use crate::display::hunks::{matched_pos_to_hunks, merge_adjacent};
 use crate::exit_codes::EXIT_BAD_ARGUMENTS;
 use crate::exit_codes::{EXIT_FOUND_CHANGES, EXIT_SUCCESS};
 use crate::files::{
-    guess_content, read_file_or_die, read_files_or_die, read_or_die, relative_paths_in_either,
-    ProbableFileKind,
+    ProbableFileKind, guess_content, read_file_or_die, read_files_or_die, read_or_die, relative_paths_in_either,
 };
 use crate::parse::guess_language::language_globs;
-use crate::parse::guess_language::{guess, language_name, Language, LanguageOverride};
+use crate::parse::guess_language::{Language, LanguageOverride, guess, language_name};
 use crate::parse::syntax;
 
 /// The global allocator used by difftastic.
@@ -82,7 +80,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 use std::path::Path;
 use std::{env, thread};
 
-use humansize::{format_size, FormatSizeOptions, BINARY};
+use humansize::{BINARY, FormatSizeOptions, format_size};
 use owo_colors::OwoColorize;
 use rayon::prelude::*;
 use strum::IntoEnumIterator;
@@ -92,14 +90,11 @@ use crate::diff::sliders::fix_all_sliders;
 use crate::options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode};
 use crate::summary::{DiffResult, FileContent, FileFormat};
 use crate::syntax::init_next_prev;
-use crate::{
-    dijkstra::mark_syntax, lines::MaxLine, parse::syntax::init_all_info,
-    parse::tree_sitter_parser as tsp,
-};
+use crate::{dijkstra::mark_syntax, lines::MaxLine, parse::syntax::init_all_info, parse::tree_sitter_parser as tsp};
 
-use tracing::{Level};
+use tracing::Level;
 
-extern crate pretty_env_logger;
+// extern crate pretty_env_logger;
 
 /// Terminate the process if we get SIGPIPE.
 #[cfg(unix)]
@@ -121,269 +116,256 @@ async fn main() {
     //     .expect("The logger has not been previously initialized");
     reset_sigpipe();
 
-        tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
-        .with_ansi(false)
-        .with_writer(std::io::stderr)
-        .init();
+    // tracing_subscriber::fmt()
+    //     .with_max_level(Level::INFO)
+    //     .with_ansi(false)
+    //     .with_writer(std::io::stderr)
+    //     .init();
 
     if options::parse_lsp_opt() {
         println!("LSP set");
         lsp::start_lsp().await;
     } else {
+        match options::parse_args() {
+            Mode::DumpTreeSitter {
+                path,
+                language_overrides,
+            } => {
+                let path = Path::new(&path);
+                let bytes = read_or_die(path);
+                let src = String::from_utf8_lossy(&bytes).to_string();
 
-    match options::parse_args() {
-        Mode::DumpTreeSitter {
-            path,
-            language_overrides,
-        } => {
-            let path = Path::new(&path);
-            let bytes = read_or_die(path);
-            let src = String::from_utf8_lossy(&bytes).to_string();
-
-            let language = guess(path, &src, &language_overrides);
-            match language {
-                Some(lang) => {
-                    let ts_lang = tsp::from_language(lang);
-                    let tree = tsp::to_tree(&src, &ts_lang);
-                    tsp::print_tree(&src, &tree);
-                }
-                None => {
-                    eprintln!("No tree-sitter parser for file: {:?}", path);
+                let language = guess(path, &src, &language_overrides);
+                match language {
+                    Some(lang) => {
+                        let ts_lang = tsp::from_language(lang);
+                        let tree = tsp::to_tree(&src, &ts_lang);
+                        tsp::print_tree(&src, &tree);
+                    }
+                    None => {
+                        eprintln!("No tree-sitter parser for file: {:?}", path);
+                    }
                 }
             }
-        }
-        Mode::DumpSyntax {
-            path,
-            ignore_comments,
-            language_overrides,
-        } => {
-            let path = Path::new(&path);
-            let bytes = read_or_die(path);
-            let src = String::from_utf8_lossy(&bytes).to_string();
+            Mode::DumpSyntax {
+                path,
+                ignore_comments,
+                language_overrides,
+            } => {
+                let path = Path::new(&path);
+                let bytes = read_or_die(path);
+                let src = String::from_utf8_lossy(&bytes).to_string();
 
-            let language = guess(path, &src, &language_overrides);
-            match language {
-                Some(lang) => {
-                    let ts_lang = tsp::from_language(lang);
-                    let arena = Arena::new();
-                    let ast = tsp::parse(&arena, &src, &ts_lang, ignore_comments);
-                    init_all_info(&ast, &[]);
-                    println!("{:#?}", ast);
-                }
-                None => {
-                    eprintln!("No tree-sitter parser for file: {:?}", path);
+                let language = guess(path, &src, &language_overrides);
+                match language {
+                    Some(lang) => {
+                        let ts_lang = tsp::from_language(lang);
+                        let arena = Arena::new();
+                        let ast = tsp::parse(&arena, &src, &ts_lang, ignore_comments);
+                        init_all_info(&ast, &[]);
+                        println!("{:#?}", ast);
+                    }
+                    None => {
+                        eprintln!("No tree-sitter parser for file: {:?}", path);
+                    }
                 }
             }
-        }
-        Mode::DumpSyntaxDot {
-            path,
-            ignore_comments,
-            language_overrides,
-        } => {
-            let path = Path::new(&path);
-            let bytes = read_or_die(path);
-            let src = String::from_utf8_lossy(&bytes).to_string();
+            Mode::DumpSyntaxDot {
+                path,
+                ignore_comments,
+                language_overrides,
+            } => {
+                let path = Path::new(&path);
+                let bytes = read_or_die(path);
+                let src = String::from_utf8_lossy(&bytes).to_string();
 
-            let language = guess(path, &src, &language_overrides);
-            match language {
-                Some(lang) => {
-                    let ts_lang = tsp::from_language(lang);
-                    let arena = Arena::new();
-                    let ast = tsp::parse(&arena, &src, &ts_lang, ignore_comments);
-                    init_all_info(&ast, &[]);
-                    syntax::print_as_dot(&ast);
-                }
-                None => {
-                    eprintln!("No tree-sitter parser for file: {:?}", path);
+                let language = guess(path, &src, &language_overrides);
+                match language {
+                    Some(lang) => {
+                        let ts_lang = tsp::from_language(lang);
+                        let arena = Arena::new();
+                        let ast = tsp::parse(&arena, &src, &ts_lang, ignore_comments);
+                        init_all_info(&ast, &[]);
+                        syntax::print_as_dot(&ast);
+                    }
+                    None => {
+                        eprintln!("No tree-sitter parser for file: {:?}", path);
+                    }
                 }
             }
-        }
-        Mode::ListLanguages {
-            use_color,
-            language_overrides,
-        } => {
-            for (lang_override, globs) in language_overrides {
-                let mut name = match lang_override {
-                    LanguageOverride::Language(lang) => language_name(lang),
-                    LanguageOverride::PlainText => "Text",
+            Mode::ListLanguages {
+                use_color,
+                language_overrides,
+            } => {
+                for (lang_override, globs) in language_overrides {
+                    let mut name = match lang_override {
+                        LanguageOverride::Language(lang) => language_name(lang),
+                        LanguageOverride::PlainText => "Text",
+                    }
+                    .to_owned();
+                    if use_color {
+                        name = name.bold().to_string();
+                    }
+                    println!("{} (from override)", name);
+                    for glob in globs {
+                        print!(" {}", glob.as_str());
+                    }
+                    println!();
                 }
-                .to_owned();
-                if use_color {
-                    name = name.bold().to_string();
+
+                for language in Language::iter() {
+                    let mut name = language_name(language).to_owned();
+                    if use_color {
+                        name = name.bold().to_string();
+                    }
+                    println!("{}", name);
+
+                    for glob in language_globs(language) {
+                        print!(" {}", glob.as_str());
+                    }
+                    println!();
                 }
-                println!("{} (from override)", name);
-                for glob in globs {
-                    print!(" {}", glob.as_str());
-                }
-                println!();
             }
-
-            for language in Language::iter() {
-                let mut name = language_name(language).to_owned();
-                if use_color {
-                    name = name.bold().to_string();
-                }
-                println!("{}", name);
-
-                for glob in language_globs(language) {
-                    print!(" {}", glob.as_str());
-                }
-                println!();
-            }
-        }
-        Mode::DiffFromConflicts {
-            display_path,
-            path,
-            diff_options,
-            display_options,
-            set_exit_code,
-            language_overrides,
-        } => {
-            let diff_result = diff_conflicts_file(
-                &display_path,
-                &path,
-                &display_options,
-                &diff_options,
-                &language_overrides,
-            );
-
-            print_diff_result(&display_options, &diff_result);
-
-            let exit_code = if set_exit_code && diff_result.has_reportable_change() {
-                EXIT_FOUND_CHANGES
-            } else {
-                EXIT_SUCCESS
-            };
-            std::process::exit(exit_code);
-        }
-        Mode::Diff {
-            diff_options,
-            display_options,
-            set_exit_code,
-            language_overrides,
-            lhs_path,
-            rhs_path,
-            lhs_permissions,
-            rhs_permissions,
-            display_path,
-            renamed,
-            lsp,
-        } => {
-            if lhs_path == rhs_path {
-                let is_dir = match &lhs_path {
-                    FileArgument::NamedPath(path) => path.is_dir(),
-                    _ => false,
-                };
-
-                print_warning(
-                    &format!(
-                        "You've specified the same {} twice.",
-                        if is_dir { "directory" } else { "file" }
-                    ),
+            Mode::DiffFromConflicts {
+                display_path,
+                path,
+                diff_options,
+                display_options,
+                set_exit_code,
+                language_overrides,
+            } => {
+                let diff_result = diff_conflicts_file(
+                    &display_path,
+                    &path,
                     &display_options,
+                    &diff_options,
+                    &language_overrides,
                 );
+
+                print_diff_result(&display_options, &diff_result);
+
+                let exit_code = if set_exit_code && diff_result.has_reportable_change() {
+                    EXIT_FOUND_CHANGES
+                } else {
+                    EXIT_SUCCESS
+                };
+                std::process::exit(exit_code);
             }
+            Mode::Diff {
+                diff_options,
+                display_options,
+                set_exit_code,
+                language_overrides,
+                lhs_path,
+                rhs_path,
+                lhs_permissions,
+                rhs_permissions,
+                display_path,
+                renamed,
+                lsp,
+            } => {
+                if lhs_path == rhs_path {
+                    let is_dir = match &lhs_path {
+                        FileArgument::NamedPath(path) => path.is_dir(),
+                        _ => false,
+                    };
 
-            let mut encountered_changes = false;
-            match (&lhs_path, &rhs_path) {
-                (
-                    options::FileArgument::NamedPath(lhs_path),
-                    options::FileArgument::NamedPath(rhs_path),
-                ) if lhs_path.is_dir() && rhs_path.is_dir() => {
-                    // Diffs in parallel when iterating this iterator.
-                    let diff_iter = diff_directories(
-                        lhs_path,
-                        rhs_path,
+                    print_warning(
+                        &format!(
+                            "You've specified the same {} twice.",
+                            if is_dir { "directory" } else { "file" }
+                        ),
                         &display_options,
-                        &diff_options,
-                        &language_overrides,
                     );
+                }
 
-                    if matches!(display_options.display_mode, DisplayMode::Json) {
-                        let results: Vec<_> = diff_iter.collect();
-                        encountered_changes = results
-                            .iter()
-                            .any(|diff_result| diff_result.has_reportable_change());
-                        display::json::print_directory(results, display_options.print_unchanged);
-                     } else if matches!(display_options.display_mode, DisplayMode::Json2) {
-                        let results: Vec<_> = diff_iter.collect();
-                        encountered_changes = results
-                            .iter()
-                            .any(|diff_result| diff_result.has_reportable_change());
-                        display::json2::print_directory(results, display_options.print_unchanged);
-                    } else if display_options.sort_paths {
-                        let mut result: Vec<DiffResult> = diff_iter.collect();
-                        result.sort_unstable_by(|a, b| a.display_path.cmp(&b.display_path));
-                        for diff_result in result {
-                            print_diff_result(&display_options, &diff_result);
+                let mut encountered_changes = false;
+                match (&lhs_path, &rhs_path) {
+                    (options::FileArgument::NamedPath(lhs_path), options::FileArgument::NamedPath(rhs_path))
+                        if lhs_path.is_dir() && rhs_path.is_dir() =>
+                    {
+                        // Diffs in parallel when iterating this iterator.
+                        let diff_iter =
+                            diff_directories(lhs_path, rhs_path, &display_options, &diff_options, &language_overrides);
 
-                            if diff_result.has_reportable_change() {
-                                encountered_changes = true;
-                            }
-                        }
-                    } else {
-                        // We want to diff files in the directory in
-                        // parallel, but print the results serially
-                        // (to prevent display interleaving).
-                        // https://github.com/rayon-rs/rayon/issues/210#issuecomment-551319338
-                        thread::scope(|s| {
-                            let (send, recv) = std::sync::mpsc::sync_channel(1);
-
-                            s.spawn(move || {
-                                diff_iter
-                                    .try_for_each_with(send, |s, diff_result| s.send(diff_result))
-                                    .expect("Receiver should be connected")
-                            });
-
-                            for diff_result in recv.into_iter() {
+                        if matches!(display_options.display_mode, DisplayMode::Json) {
+                            let results: Vec<_> = diff_iter.collect();
+                            encountered_changes = results.iter().any(|diff_result| diff_result.has_reportable_change());
+                            display::json::print_directory(results, display_options.print_unchanged);
+                        } else if matches!(display_options.display_mode, DisplayMode::Json2) {
+                            let results: Vec<_> = diff_iter.collect();
+                            encountered_changes = results.iter().any(|diff_result| diff_result.has_reportable_change());
+                            display::json2::print_directory(results, display_options.print_unchanged);
+                        } else if display_options.sort_paths {
+                            let mut result: Vec<DiffResult> = diff_iter.collect();
+                            result.sort_unstable_by(|a, b| a.display_path.cmp(&b.display_path));
+                            for diff_result in result {
                                 print_diff_result(&display_options, &diff_result);
 
                                 if diff_result.has_reportable_change() {
                                     encountered_changes = true;
                                 }
                             }
-                        });
-                    }
-                }
-                _ => {
-                    println!("lhs_path: {} - rhs_path: {}", lhs_path, rhs_path);
-                    let diff_result = diff_file(
-                        &display_path,
-                        renamed,
-                        &lhs_path,
-                        &rhs_path,
-                        lhs_permissions.as_ref(),
-                        rhs_permissions.as_ref(),
-                        &display_options,
-                        &diff_options,
-                        false,
-                        &language_overrides,
-                    );
-                    if diff_result.has_reportable_change() {
-                        encountered_changes = true;
-                    }
+                        } else {
+                            // We want to diff files in the directory in
+                            // parallel, but print the results serially
+                            // (to prevent display interleaving).
+                            // https://github.com/rayon-rs/rayon/issues/210#issuecomment-551319338
+                            thread::scope(|s| {
+                                let (send, recv) = std::sync::mpsc::sync_channel(1);
 
-                    match display_options.display_mode {
-                        DisplayMode::Inline
-                        | DisplayMode::SideBySide
-                        | DisplayMode::SideBySideShowBoth => {
-                            print_diff_result(&display_options, &diff_result);
+                                s.spawn(move || {
+                                    diff_iter
+                                        .try_for_each_with(send, |s, diff_result| s.send(diff_result))
+                                        .expect("Receiver should be connected")
+                                });
+
+                                for diff_result in recv.into_iter() {
+                                    print_diff_result(&display_options, &diff_result);
+
+                                    if diff_result.has_reportable_change() {
+                                        encountered_changes = true;
+                                    }
+                                }
+                            });
                         }
-                        DisplayMode::Json => display::json::print(&diff_result),
-                        DisplayMode::Json2 => display::json2::print(&diff_result),
+                    }
+                    _ => {
+                        println!("lhs_path: {} - rhs_path: {}", lhs_path, rhs_path);
+                        let diff_result = diff_file(
+                            &display_path,
+                            renamed,
+                            &lhs_path,
+                            &rhs_path,
+                            lhs_permissions.as_ref(),
+                            rhs_permissions.as_ref(),
+                            &display_options,
+                            &diff_options,
+                            false,
+                            &language_overrides,
+                        );
+                        if diff_result.has_reportable_change() {
+                            encountered_changes = true;
+                        }
+
+                        match display_options.display_mode {
+                            DisplayMode::Inline | DisplayMode::SideBySide | DisplayMode::SideBySideShowBoth => {
+                                print_diff_result(&display_options, &diff_result);
+                            }
+                            DisplayMode::Json => display::json::print(&diff_result),
+                            DisplayMode::Json2 => display::json2::print(&diff_result),
+                        }
                     }
                 }
-            }
 
-            let exit_code = if set_exit_code && encountered_changes {
-                EXIT_FOUND_CHANGES
-            } else {
-                EXIT_SUCCESS
-            };
-            std::process::exit(exit_code);
-        }
-    };
+                let exit_code = if set_exit_code && encountered_changes {
+                    EXIT_FOUND_CHANGES
+                } else {
+                    EXIT_SUCCESS
+                };
+                std::process::exit(exit_code);
+            }
+        };
     }
 }
 
@@ -444,10 +426,7 @@ fn diff_file(
     let mut extra_info = renamed;
     if let (Some(lhs_perms), Some(rhs_perms)) = (lhs_permissions, rhs_permissions) {
         if lhs_perms != rhs_perms {
-            let msg = format!(
-                "File permissions changed from {} to {}.",
-                lhs_perms, rhs_perms
-            );
+            let msg = format!("File permissions changed from {} to {}.", lhs_perms, rhs_perms);
 
             if let Some(extra_info) = &mut extra_info {
                 extra_info.push('\n');
@@ -687,20 +666,14 @@ fn diff_file_content(
                                 let mut rhs_positions = syntax::change_positions(&rhs, &change_map);
 
                                 if diff_options.ignore_comments {
-                                    let lhs_comments =
-                                        tsp::comment_positions(&lhs_tree, lhs_src, &lang_config);
+                                    let lhs_comments = tsp::comment_positions(&lhs_tree, lhs_src, &lang_config);
                                     lhs_positions.extend(lhs_comments);
 
-                                    let rhs_comments =
-                                        tsp::comment_positions(&rhs_tree, rhs_src, &lang_config);
+                                    let rhs_comments = tsp::comment_positions(&rhs_tree, rhs_src, &lang_config);
                                     rhs_positions.extend(rhs_comments);
                                 }
 
-                                (
-                                    FileFormat::SupportedLanguage(language),
-                                    lhs_positions,
-                                    rhs_positions,
-                                )
+                                (FileFormat::SupportedLanguage(language), lhs_positions, rhs_positions)
                             }
                         }
                         Err(tsp::ExceededParseErrorLimit(error_count)) => {
@@ -714,13 +687,7 @@ fn diff_file_content(
                             };
 
                             if diff_options.check_only {
-                                return check_only_text(
-                                    &file_format,
-                                    display_path,
-                                    extra_info,
-                                    lhs_src,
-                                    rhs_src,
-                                );
+                                return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
                             }
 
                             let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
@@ -732,20 +699,11 @@ fn diff_file_content(
                 Err(tsp::ExceededByteLimit(num_bytes)) => {
                     let format_options = FormatSizeOptions::from(BINARY).decimal_places(1);
                     let file_format = FileFormat::TextFallback {
-                        reason: format!(
-                            "{} exceeded DFT_BYTE_LIMIT",
-                            &format_size(num_bytes, format_options)
-                        ),
+                        reason: format!("{} exceeded DFT_BYTE_LIMIT", &format_size(num_bytes, format_options)),
                     };
 
                     if diff_options.check_only {
-                        return check_only_text(
-                            &file_format,
-                            display_path,
-                            extra_info,
-                            lhs_src,
-                            rhs_src,
-                        );
+                        return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
                     }
 
                     let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
@@ -935,8 +893,7 @@ fn print_diff_result(display_options: &DisplayOptions, summary: &DiffResult) {
                 }
             }
         }
-        (FileContent::Text(_), FileContent::Binary)
-        | (FileContent::Binary, FileContent::Text(_)) => {
+        (FileContent::Text(_), FileContent::Binary) | (FileContent::Binary, FileContent::Text(_)) => {
             // We're diffing a binary file against a text file.
             println!(
                 "{}",
