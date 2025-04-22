@@ -1470,6 +1470,10 @@ pub struct TextDocumentClientCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg(feature = "proposed")]
     pub inline_completion: Option<InlineCompletionClientCapabilities>,
+
+    /// Capabilities specific to the `textDocument/diff` request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff: Option<bool>,
 }
 
 /// Where ClientCapabilities are currently empty:
@@ -1951,7 +1955,7 @@ pub struct ServerCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental: Option<Value>,
 
-    #[serde(skip_serializing_if = "Option::is_none")] // Good practice for capabilities
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub diff: Option<bool>,
 }
 

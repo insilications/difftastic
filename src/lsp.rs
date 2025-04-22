@@ -12,8 +12,8 @@ use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use lsp_types::{
-    Hover, HoverContents, InitializeResult, MarkedString, MessageType, ServerCapabilities, ServerInfo,
-    ShowMessageParams, notification, request,
+    Diff, InitializeResult, MessageType, Range, ServerCapabilities, ServerInfo, ShowMessageParams, notification,
+    request,
 };
 use tower::ServiceBuilder;
 use tracing::{Level, info};
@@ -76,20 +76,22 @@ pub(crate) async fn start_lsp() {
                 //     offset_encoding: Some("utf-32".to_string()),
                 // })
             })
-            .request::<request::HoverRequest, _>(|st, _| {
+            .request::<request::DiffRequest, _>(|st, _| {
                 let client = st.client.clone();
-                let counter = st.counter;
+                // let counter = st.counter;
                 async move {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     client
                         .notify::<notification::ShowMessage>(ShowMessageParams {
                             typ: MessageType::INFO,
-                            message: "Hello LSP".into(),
+                            message: "request::DiffRequest".into(),
                         })
                         .unwrap();
-                    Ok(Some(Hover {
-                        contents: HoverContents::Scalar(MarkedString::String(format!("I am a hover text {counter}!"))),
-                        range: None,
+                    Ok(Some(Diff {
+                        ranges: Some(Vec::from([Range {
+                            start: lsp_types::Position { line: 0, character: 0 },
+                            end: lsp_types::Position { line: 1, character: 1 },
+                        }])),
                     }))
                 }
             })

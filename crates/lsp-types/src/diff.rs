@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    MarkedString, MarkupContent, MarkupKind, Range, TextDocumentIdentifier, TextDocumentPositionParams,
-    TextDocumentRegistrationOptions, WorkDoneProgressOptions, WorkDoneProgressParams,
-};
+use crate::{Range, TextDocumentIdentifier};
 
 // #[derive(Debug, Eq, PartialEq, Clone, Default, Deserialize, Serialize)]
 // #[serde(rename_all = "camelCase")]

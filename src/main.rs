@@ -92,7 +92,7 @@ use crate::summary::{DiffResult, FileContent, FileFormat};
 use crate::syntax::init_next_prev;
 use crate::{dijkstra::mark_syntax, lines::MaxLine, parse::syntax::init_all_info, parse::tree_sitter_parser as tsp};
 
-use tracing::Level;
+// use tracing::Level;
 
 // extern crate pretty_env_logger;
 
