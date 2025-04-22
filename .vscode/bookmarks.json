@@ -1,0 +1,24 @@
+{
+	"files": [
+		{
+			"path": "crates/async-lsp/metaModel.json",
+			"bookmarks": [
+				{
+					"line": 1160,
+					"column": 6,
+					"label": ""
+				},
+				{
+					"line": 4966,
+					"column": 0,
+					"label": ""
+				},
+				{
+					"line": 4988,
+					"column": 0,
+					"label": ""
+				}
+			]
+		}
+	]
+}
