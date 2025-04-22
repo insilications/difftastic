@@ -139,6 +139,9 @@ pub use formatting::*;
 mod hover;
 pub use hover::*;
 
+mod diff;
+pub use diff::*;
+
 mod inlay_hint;
 pub use inlay_hint::*;
 

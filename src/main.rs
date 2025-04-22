@@ -331,7 +331,7 @@ async fn main() {
                         }
                     }
                     _ => {
-                        println!("lhs_path: {} - rhs_path: {}", lhs_path, rhs_path);
+                        // println!("lhs_path: {} - rhs_path: {}", lhs_path, rhs_path);
                         let diff_result = diff_file(
                             &display_path,
                             renamed,

@@ -1,6 +1,6 @@
 use super::*;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 pub trait Request {
     type Params: DeserializeOwned + Serialize + Send + Sync + 'static;
@@ -50,6 +50,9 @@ macro_rules! lsp_request {
     };
     ("textDocument/hover") => {
         $crate::request::HoverRequest
+    };
+    ("textDocument/diff") => {
+        $crate::request::DiffRequest
     };
     ("textDocument/signatureHelp") => {
         $crate::request::SignatureHelpRequest
@@ -310,6 +313,17 @@ impl Request for HoverRequest {
     const METHOD: &'static str = "textDocument/hover";
 }
 
+/// The diff request is sent from the client to the server to request diff information for a given file and a revision
+/// spec (i.e. HEAD~1).
+#[derive(Debug)]
+pub enum DiffRequest {}
+
+impl Request for DiffRequest {
+    type Params = DiffParams;
+    type Result = Option<Diff>;
+    const METHOD: &'static str = "textDocument/diff";
+}
+
 /// The signature help request is sent from the client to the server to request signature information at
 /// a given cursor position.
 #[derive(Debug)]
@@ -435,9 +449,9 @@ impl Request for WorkspaceSymbolResolve {
     const METHOD: &'static str = "workspaceSymbol/resolve";
 }
 
-/// The workspace/executeCommand request is sent from the client to the server to trigger command execution on the server.
-/// In most cases the server creates a WorkspaceEdit structure and applies the changes to the workspace using the request
-/// workspace/applyEdit which is sent from the server to the client.
+/// The workspace/executeCommand request is sent from the client to the server to trigger command execution on the
+/// server. In most cases the server creates a WorkspaceEdit structure and applies the changes to the workspace using
+/// the request workspace/applyEdit which is sent from the server to the client.
 #[derive(Debug)]
 pub enum ExecuteCommand {}
 
@@ -596,8 +610,8 @@ impl Request for OnTypeFormatting {
 /// The linked editing request is sent from the client to the server to return for a given position in a document
 /// the range of the symbol at the position and all ranges that have the same content.
 /// Optionally a word pattern can be returned to describe valid contents. A rename to one of the ranges can be applied
-/// to all other ranges if the new content is valid. If no result-specific word pattern is provided, the word pattern from
-/// the client’s language configuration is used.
+/// to all other ranges if the new content is valid. If no result-specific word pattern is provided, the word pattern
+/// from the client’s language configuration is used.
 #[derive(Debug)]
 pub enum LinkedEditingRange {}
 
@@ -617,8 +631,8 @@ impl Request for Rename {
     const METHOD: &'static str = "textDocument/rename";
 }
 
-/// The document color request is sent from the client to the server to list all color references found in a given text document.
-/// Along with the range, a color value in RGB is returned.
+/// The document color request is sent from the client to the server to list all color references found in a given text
+/// document. Along with the range, a color value in RGB is returned.
 #[derive(Debug)]
 pub enum DocumentColor {}
 
@@ -628,8 +642,8 @@ impl Request for DocumentColor {
     const METHOD: &'static str = "textDocument/documentColor";
 }
 
-/// The color presentation request is sent from the client to the server to obtain a list of presentations for a color value
-/// at a given location.
+/// The color presentation request is sent from the client to the server to obtain a list of presentations for a color
+/// value at a given location.
 #[derive(Debug)]
 pub enum ColorPresentationRequest {}
 
@@ -639,7 +653,8 @@ impl Request for ColorPresentationRequest {
     const METHOD: &'static str = "textDocument/colorPresentation";
 }
 
-/// The folding range request is sent from the client to the server to return all folding ranges found in a given text document.
+/// The folding range request is sent from the client to the server to return all folding ranges found in a given text
+/// document.
 #[derive(Debug)]
 pub enum FoldingRangeRequest {}
 
@@ -649,8 +664,8 @@ impl Request for FoldingRangeRequest {
     const METHOD: &'static str = "textDocument/foldingRange";
 }
 
-/// The prepare rename request is sent from the client to the server to setup and test the validity of a rename operation
-/// at a given location.
+/// The prepare rename request is sent from the client to the server to setup and test the validity of a rename
+/// operation at a given location.
 #[derive(Debug)]
 pub enum PrepareRenameRequest {}
 
@@ -762,8 +777,9 @@ impl Request for SemanticTokensRangeRequest {
 /// The `workspace/semanticTokens/refresh` request is sent from the server to the client.
 /// Servers can use it to ask clients to refresh the editors for which this server provides semantic tokens.
 /// As a result the client should ask the server to recompute the semantic tokens for these editors.
-/// This is useful if a server detects a project wide configuration change which requires a re-calculation of all semantic tokens.
-/// Note that the client still has the freedom to delay the re-calculation of the semantic tokens if for example an editor is currently not visible.
+/// This is useful if a server detects a project wide configuration change which requires a re-calculation of all
+/// semantic tokens. Note that the client still has the freedom to delay the re-calculation of the semantic tokens if
+/// for example an editor is currently not visible.
 pub enum SemanticTokensRefresh {}
 
 impl Request for SemanticTokensRefresh {
@@ -776,7 +792,8 @@ impl Request for SemanticTokensRefresh {
 /// Servers can use it to ask clients to refresh the code lenses currently shown in editors.
 /// As a result the client should ask the server to recompute the code lenses for these editors.
 /// This is useful if a server detects a configuration change which requires a re-calculation of all code lenses.
-/// Note that the client still has the freedom to delay the re-calculation of the code lenses if for example an editor is currently not visible.
+/// Note that the client still has the freedom to delay the re-calculation of the code lenses if for example an editor
+/// is currently not visible.
 pub enum CodeLensRefresh {}
 
 impl Request for CodeLensRefresh {
@@ -785,7 +802,10 @@ impl Request for CodeLensRefresh {
     const METHOD: &'static str = "workspace/codeLens/refresh";
 }
 
-/// The will create files request is sent from the client to the server before files are actually created as long as the creation is triggered from within the client. The request can return a WorkspaceEdit which will be applied to workspace before the files are created. Please note that clients might drop results if computing the edit took too long or if a server constantly fails on this request. This is done to keep creates fast and reliable.
+/// The will create files request is sent from the client to the server before files are actually created as long as the
+/// creation is triggered from within the client. The request can return a WorkspaceEdit which will be applied to
+/// workspace before the files are created. Please note that clients might drop results if computing the edit took too
+/// long or if a server constantly fails on this request. This is done to keep creates fast and reliable.
 pub enum WillCreateFiles {}
 
 impl Request for WillCreateFiles {
@@ -794,7 +814,10 @@ impl Request for WillCreateFiles {
     const METHOD: &'static str = "workspace/willCreateFiles";
 }
 
-/// The will rename files request is sent from the client to the server before files are actually renamed as long as the rename is triggered from within the client. The request can return a WorkspaceEdit which will be applied to workspace before the files are renamed. Please note that clients might drop results if computing the edit took too long or if a server constantly fails on this request. This is done to keep renames fast and reliable.
+/// The will rename files request is sent from the client to the server before files are actually renamed as long as the
+/// rename is triggered from within the client. The request can return a WorkspaceEdit which will be applied to
+/// workspace before the files are renamed. Please note that clients might drop results if computing the edit took too
+/// long or if a server constantly fails on this request. This is done to keep renames fast and reliable.
 pub enum WillRenameFiles {}
 
 impl Request for WillRenameFiles {
@@ -803,7 +826,10 @@ impl Request for WillRenameFiles {
     const METHOD: &'static str = "workspace/willRenameFiles";
 }
 
-/// The will delete files request is sent from the client to the server before files are actually deleted as long as the deletion is triggered from within the client. The request can return a WorkspaceEdit which will be applied to workspace before the files are deleted. Please note that clients might drop results if computing the edit took too long or if a server constantly fails on this request. This is done to keep deletes fast and reliable.
+/// The will delete files request is sent from the client to the server before files are actually deleted as long as the
+/// deletion is triggered from within the client. The request can return a WorkspaceEdit which will be applied to
+/// workspace before the files are deleted. Please note that clients might drop results if computing the edit took too
+/// long or if a server constantly fails on this request. This is done to keep deletes fast and reliable.
 pub enum WillDeleteFiles {}
 
 impl Request for WillDeleteFiles {
@@ -812,7 +838,8 @@ impl Request for WillDeleteFiles {
     const METHOD: &'static str = "workspace/willDeleteFiles";
 }
 
-/// The show document request is sent from a server to a client to ask the client to display a particular document in the user interface.
+/// The show document request is sent from a server to a client to ask the client to display a particular document in
+/// the user interface.
 pub enum ShowDocument {}
 
 impl Request for ShowDocument {
@@ -1004,6 +1031,7 @@ mod test {
         check_macro!("textDocument/willSaveWaitUntil");
         check_macro!("textDocument/completion");
         check_macro!("textDocument/hover");
+        check_macro!("textDocument/diff");
         check_macro!("textDocument/signatureHelp");
         check_macro!("textDocument/declaration");
         check_macro!("textDocument/definition");
