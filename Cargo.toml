@@ -117,7 +117,7 @@ async-lsp = { version = "0.2.2", features = [
         "omni-trait",
         "tokio",
         "tracing",
-] }
+], path = "crates/async-lsp" }
 tokio = { version = "1.44.2", features = [
         "io-std",
         "io-util",
@@ -128,7 +128,7 @@ tokio = { version = "1.44.2", features = [
 ] }
 async-io = "2.4.0"
 futures = { version = "0.3.31", features = ["async-await", "std"] }
-lsp-types = { version = "0.97.0", features = ["proposed"] }
+lsp-types = { version = "0.97.0", features = ["proposed"], path  = "crates/lsp-types" }
 tower-layer = "0.3.3"
 tower-service = "0.3.3"
 async-process = "2.3.0"
@@ -160,7 +160,3 @@ name = "difft"
 path = "src/main.rs"
 
 [features]
-
-
-[patch.crates-io]
-async-lsp = { path = "/aot/stuff/dev/async-lsp/" }

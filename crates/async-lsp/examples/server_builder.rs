@@ -1,22 +1,19 @@
 use std::ops::ControlFlow;
 use std::time::Duration;
 
-// Change the import to directly access the external crate since custom_lsp_types is its own crate
-// use difftastic::custom_lsp_types::{MyInitializeResult, MyServerCapabilities};
-
-use async_lsp::ClientSocket;
 use async_lsp::client_monitor::ClientProcessMonitorLayer;
 use async_lsp::concurrency::ConcurrencyLayer;
 use async_lsp::panic::CatchUnwindLayer;
 use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
+use async_lsp::ClientSocket;
 use lsp_types::{
-    Hover, HoverContents, InitializeResult, MarkedString, MessageType, ServerCapabilities, ServerInfo,
-    ShowMessageParams, notification, request,
+    notification, request, Hover, HoverContents, HoverProviderCapability, InitializeResult,
+    MarkedString, MessageType, OneOf, ServerCapabilities, ShowMessageParams,
 };
 use tower::ServiceBuilder;
-use tracing::{Level, info};
+use tracing::{info, Level};
 
 struct ServerState {
     client: ClientSocket,
@@ -25,7 +22,8 @@ struct ServerState {
 
 struct TickEvent;
 
-pub(crate) async fn start_lsp() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     let (server, _) = async_lsp::MainLoop::new_server(|client| {
         tokio::spawn({
             let client = client.clone();
@@ -49,32 +47,12 @@ pub(crate) async fn start_lsp() {
                 eprintln!("Initialize with {params:?}");
                 Ok(InitializeResult {
                     capabilities: ServerCapabilities {
-                        // hover_provider: Some(HoverProviderCapability::Simple(true)),
-                        // definition_provider: Some(OneOf::Left(true)),
-                        diff: Some(true),
+                        hover_provider: Some(HoverProviderCapability::Simple(true)),
+                        definition_provider: Some(OneOf::Left(true)),
                         ..ServerCapabilities::default()
                     },
-                    server_info: Some(ServerInfo {
-                        name: "difftastic-lsp".to_string(),
-                        version: Some("0.1.0".to_string()),
-                    }),
-                    offset_encoding: Some("utf-32".to_string()),
+                    server_info: None,
                 })
-                // Ok(MyInitializeResult {
-                //     capabilities: MyServerCapabilities {
-                //         standard: ServerCapabilities {
-                //             // hover_provider: Some(HoverProviderCapability::Simple(true)),
-                //             // definition_provider: Some(OneOf::Left(true)),
-                //             ..ServerCapabilities::default()
-                //         },
-                //         diff: Some(true),
-                //     },
-                //     server_info: Some(ServerInfo {
-                //         name: "difftastic-lsp".to_string(),
-                //         version: Some("0.1.0".to_string()),
-                //     }),
-                //     offset_encoding: Some("utf-32".to_string()),
-                // })
             })
             .request::<request::HoverRequest, _>(|st, _| {
                 let client = st.client.clone();
@@ -88,32 +66,21 @@ pub(crate) async fn start_lsp() {
                         })
                         .unwrap();
                     Ok(Some(Hover {
-                        contents: HoverContents::Scalar(MarkedString::String(format!("I am a hover text {counter}!"))),
+                        contents: HoverContents::Scalar(MarkedString::String(format!(
+                            "I am a hover text {counter}!"
+                        ))),
                         range: None,
                     }))
                 }
             })
-            // .request::<request::GotoDefinition, _>(|_, _| async move { unimplemented!("Not yet implemented!") })
-            .notification::<notification::Initialized>(|_, _| {
-                info!("notification::Initialized");
-                ControlFlow::Continue(())
+            .request::<request::GotoDefinition, _>(|_, _| async move {
+                unimplemented!("Not yet implemented!")
             })
-            .notification::<notification::DidChangeConfiguration>(|_, _| {
-                info!("notification::DidChangeConfiguration");
-                ControlFlow::Continue(())
-            })
-            .notification::<notification::DidOpenTextDocument>(|_, _| {
-                info!("notification::DidOpenTextDocument");
-                ControlFlow::Continue(())
-            })
-            .notification::<notification::DidChangeTextDocument>(|_, _| {
-                info!("notification::DidChangeTextDocument");
-                ControlFlow::Continue(())
-            })
-            .notification::<notification::DidCloseTextDocument>(|_, _| {
-                info!("notification::DidCloseTextDocument");
-                ControlFlow::Continue(())
-            })
+            .notification::<notification::Initialized>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidChangeConfiguration>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidOpenTextDocument>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidChangeTextDocument>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::DidCloseTextDocument>(|_, _| ControlFlow::Continue(()))
             .event::<TickEvent>(|st, _| {
                 info!("tick");
                 st.counter += 1;

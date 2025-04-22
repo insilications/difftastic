@@ -1,0 +1,122 @@
+[package]
+name = "async-lsp"
+version = "0.2.2"
+edition = "2021"
+description = "Asynchronous Language Server Protocol (LSP) framework based on tower"
+keywords = ["lsp", "language-server", "tower"]
+categories = ["asynchronous"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/oxalica/async-lsp"
+# Required features:
+# - std::future::poll_fn
+# - std::task::ready!
+rust-version = "1.64" # Sync with CI!
+include = [
+    "/Cargo.toml",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/README.md",
+    "/benches",
+    "/examples",
+    "/src",
+    "/tests",
+]
+
+[features]
+default = ["client-monitor", "omni-trait", "stdio", "tracing"]
+client-monitor = ["dep:waitpid-any", "dep:rustix"]
+omni-trait = []
+stdio = ["dep:rustix", "rustix?/fs", "tokio?/net"]
+tracing = ["dep:tracing"]
+forward = []
+
+[[example]]
+name = "client_builder"
+required-features = ["omni-trait", "tracing", "tokio"]
+
+[[example]]
+name = "client_trait"
+required-features = ["omni-trait", "tracing", "tokio"]
+
+[[example]]
+name = "server_builder"
+required-features = [
+    "client-monitor",
+    "omni-trait",
+    "stdio",
+    "tracing",
+    "tokio",
+]
+
+[[example]]
+name = "server_trait"
+required-features = [
+    "client-monitor",
+    "omni-trait",
+    "stdio",
+    "tracing",
+    "tokio",
+]
+
+[[example]]
+name = "inspector"
+required-features = ["forward", "tracing", "tokio"]
+
+[[test]]
+name = "unit_test"
+required-features = ["omni-trait", "tokio"]
+
+[[test]]
+name = "stdio"
+harness = false
+required-features = ["stdio", "tokio"]
+
+[[bench]]
+name = "bench"
+harness = false
+
+[dependencies]
+async-io = { version = "2", optional = true }
+futures = { version = "0.3.28", default-features = false, features = [
+    "async-await",
+    "std",
+] }
+# See: https://github.com/gluon-lang/lsp-types/issues/284
+lsp-types = { version = "0.97.0", features = [
+    "proposed",
+], path = "../lsp-types" }
+pin-project-lite = "0.2.9"
+rustix = { version = "1", optional = true }
+serde = { version = "1.0.159", features = ["derive"] }
+serde_json = "1.0.95"
+thiserror = "2"
+tokio = { version = "1.27.0", optional = true }
+tower-layer = "0.3.2"
+tower-service = "0.3.2"
+tracing = { version = "0.1.37", optional = true }
+waitpid-any = { version = "0.3", optional = true }
+
+[dev-dependencies]
+async-io = "2"
+async-process = "2"
+# Workaround: https://github.com/bheisler/criterion.rs/issues/702
+clap = { version = "4", default-features = false, features = ["help"] }
+criterion = { version = "0.5.1", features = ["async_tokio"] }
+tokio = { version = "1.27.0", features = [
+    "io-std",
+    "io-util",
+    "macros",
+    "process",
+    "rt",
+    "time",
+] }
+tokio-util = { version = "0.7.8", features = ["compat"] }
+tower = "0.5"
+tracing-subscriber = "0.3.16"
+
+[profile.bench]
+debug = 1
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

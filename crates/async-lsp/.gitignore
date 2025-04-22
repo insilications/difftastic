@@ -1,0 +1,4 @@
+/target
+/metaModel.json
+/perf*.data*
+/flamegraph*.svg
