@@ -14,7 +14,8 @@ use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use lsp_types::{
     Diff, InitializeResult, InitializedParams, MessageType, PositionEncodingKind, Range, ServerCapabilities,
-    ServerInfo, ShowMessageParams, notification,
+    ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, notification,
     request::{self as req},
 };
 use tower::ServiceBuilder;
@@ -60,6 +61,13 @@ pub(crate) async fn start_lsp() {
                 Ok(InitializeResult {
                     capabilities: ServerCapabilities {
                         position_encoding: Some(PositionEncodingKind::UTF16),
+                        text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                            open_close: Some(true),
+                            change: Some(TextDocumentSyncKind::NONE),
+                            will_save: None,
+                            will_save_wait_until: None,
+                            save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                        })),
                         // hover_provider: Some(HoverProviderCapability::Simple(true)),
                         // definition_provider: Some(OneOf::Left(true)),
                         // diff: Some(true),
@@ -128,8 +136,8 @@ pub(crate) async fn start_lsp() {
                 info!("notification::DidChangeConfiguration");
                 ControlFlow::Continue(())
             })
-            .notification::<notification::DidOpenTextDocument>(|_, _| {
-                info!("notification::DidOpenTextDocument");
+            .notification::<notification::DidOpenTextDocument>(|_, params| {
+                info!("notification::DidOpenTextDocument with params: {:?}", params);
                 ControlFlow::Continue(())
             })
             .notification::<notification::DidChangeTextDocument>(|_, _| {
@@ -138,6 +146,10 @@ pub(crate) async fn start_lsp() {
             })
             .notification::<notification::DidCloseTextDocument>(|_, _| {
                 info!("notification::DidCloseTextDocument");
+                ControlFlow::Continue(())
+            })
+            .notification::<notification::DidSaveTextDocument>(|_, _| {
+                info!("notification::DidSaveTextDocument");
                 ControlFlow::Continue(())
             })
             .event::<TickEvent>(|st, _| {
