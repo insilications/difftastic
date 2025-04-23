@@ -1,3 +1,4 @@
+use std::future::ready;
 use std::ops::ControlFlow;
 use std::time::Duration;
 
@@ -17,7 +18,7 @@ use lsp_types::{
     request::{self as req},
 };
 use tower::ServiceBuilder;
-use tracing::{Level, info};
+use tracing::{Level, debug, info};
 
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
 const LSP_SERVER_VERSION: &str = "0.1.0";
@@ -50,7 +51,12 @@ pub(crate) async fn start_lsp() {
         });
         router
             .request::<req::Initialize, _>(|_, params| async move {
-                eprintln!("Initialize with {params:?}");
+                // eprintln!("Initialize with {params:?}");
+                // info!("Initialize with {params:?}");
+                match serde_json::to_string(&params) {
+                    Ok(json_params) => info!(params = %json_params, "Initialize with"),
+                    Err(_) => debug!(raw_params = ?params, "Raw initialize with"),
+                }
                 Ok(InitializeResult {
                     capabilities: ServerCapabilities {
                         position_encoding: Some(PositionEncodingKind::UTF16),
@@ -105,11 +111,13 @@ pub(crate) async fn start_lsp() {
                     }))
                 }
             })
+            .request::<req::Shutdown, _>(|_, _| ready(Ok(())))
             // .request::<request::GotoDefinition, _>(|_, _| async move { unimplemented!("Not yet implemented!") })
             .notification::<notification::Initialized>(|_, _params: InitializedParams| {
                 info!("notification::Initialized");
                 ControlFlow::Continue(())
             })
+            .notification::<notification::Exit>(|_, _| ControlFlow::Break(Ok(())))
             .notification::<notification::DidChangeConfiguration>(|_, _| ControlFlow::Continue(()))
             .notification::<notification::DidOpenTextDocument>(|_, _| ControlFlow::Continue(()))
             .notification::<notification::DidChangeTextDocument>(|_, _| ControlFlow::Continue(()))
