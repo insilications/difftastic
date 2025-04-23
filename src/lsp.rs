@@ -111,17 +111,35 @@ pub(crate) async fn start_lsp() {
                     }))
                 }
             })
-            .request::<req::Shutdown, _>(|_, _| ready(Ok(())))
+            .request::<req::Shutdown, _>(|_, _| {
+                info!("req::Shutdown");
+                ready(Ok(()))
+            })
             // .request::<request::GotoDefinition, _>(|_, _| async move { unimplemented!("Not yet implemented!") })
             .notification::<notification::Initialized>(|_, _params: InitializedParams| {
                 info!("notification::Initialized");
                 ControlFlow::Continue(())
             })
-            .notification::<notification::Exit>(|_, _| ControlFlow::Break(Ok(())))
-            .notification::<notification::DidChangeConfiguration>(|_, _| ControlFlow::Continue(()))
-            .notification::<notification::DidOpenTextDocument>(|_, _| ControlFlow::Continue(()))
-            .notification::<notification::DidChangeTextDocument>(|_, _| ControlFlow::Continue(()))
-            .notification::<notification::DidCloseTextDocument>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::Exit>(|_, _| {
+                info!("notification::Exit");
+                ControlFlow::Break(Ok(()))
+            })
+            .notification::<notification::DidChangeConfiguration>(|_, _| {
+                info!("notification::DidChangeConfiguration");
+                ControlFlow::Continue(())
+            })
+            .notification::<notification::DidOpenTextDocument>(|_, _| {
+                info!("notification::DidOpenTextDocument");
+                ControlFlow::Continue(())
+            })
+            .notification::<notification::DidChangeTextDocument>(|_, _| {
+                info!("notification::DidChangeTextDocument");
+                ControlFlow::Continue(())
+            })
+            .notification::<notification::DidCloseTextDocument>(|_, _| {
+                info!("notification::DidCloseTextDocument");
+                ControlFlow::Continue(())
+            })
             .event::<TickEvent>(|st, _| {
                 // info!("tick");
                 st.counter += 1;
