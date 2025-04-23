@@ -12,12 +12,15 @@ use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use lsp_types::{
-    Diff, InitializeResult, MessageType, PositionEncodingKind, Range, ServerCapabilities, ServerInfo,
-    ShowMessageParams, notification,
+    Diff, InitializeResult, InitializedParams, MessageType, PositionEncodingKind, Range, ServerCapabilities,
+    ServerInfo, ShowMessageParams, notification,
     request::{self as req},
 };
 use tower::ServiceBuilder;
 use tracing::{Level, info};
+
+const LSP_SERVER_NAME: &str = "difftastic-lsp";
+const LSP_SERVER_VERSION: &str = "0.1.0";
 
 struct ServerState {
     client: ClientSocket,
@@ -61,8 +64,8 @@ pub(crate) async fn start_lsp() {
                         ..ServerCapabilities::default()
                     },
                     server_info: Some(ServerInfo {
-                        name: "difftastic-lsp".to_string(),
-                        version: Some("0.1.0".to_string()),
+                        name: LSP_SERVER_NAME.into(),
+                        version: Some(LSP_SERVER_VERSION.into()),
                     }),
                     // offset_encoding: Some("utf-8".to_string()),
                     offset_encoding: None,
@@ -103,7 +106,10 @@ pub(crate) async fn start_lsp() {
                 }
             })
             // .request::<request::GotoDefinition, _>(|_, _| async move { unimplemented!("Not yet implemented!") })
-            .notification::<notification::Initialized>(|_, _| ControlFlow::Continue(()))
+            .notification::<notification::Initialized>(|_, _params: InitializedParams| {
+                info!("notification::Initialized");
+                ControlFlow::Continue(())
+            })
             .notification::<notification::DidChangeConfiguration>(|_, _| ControlFlow::Continue(()))
             .notification::<notification::DidOpenTextDocument>(|_, _| ControlFlow::Continue(()))
             .notification::<notification::DidChangeTextDocument>(|_, _| ControlFlow::Continue(()))
