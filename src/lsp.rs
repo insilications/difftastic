@@ -13,7 +13,8 @@ use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use lsp_types::{
     Diff, InitializeResult, MessageType, PositionEncodingKind, Range, ServerCapabilities, ServerInfo,
-    ShowMessageParams, notification, request,
+    ShowMessageParams, notification,
+    request::{self as req},
 };
 use tower::ServiceBuilder;
 use tracing::{Level, info};
@@ -45,7 +46,7 @@ pub(crate) async fn start_lsp() {
             counter: 0,
         });
         router
-            .request::<request::Initialize, _>(|_, params| async move {
+            .request::<req::Initialize, _>(|_, params| async move {
                 eprintln!("Initialize with {params:?}");
                 Ok(InitializeResult {
                     capabilities: ServerCapabilities {
@@ -82,7 +83,7 @@ pub(crate) async fn start_lsp() {
                 //     offset_encoding: Some("utf-32".to_string()),
                 // })
             })
-            .request::<request::DiffRequest, _>(|st, _| {
+            .request::<req::DiffRequest, _>(|st, _| {
                 let client = st.client.clone();
                 // let counter = st.counter;
                 async move {
