@@ -12,8 +12,8 @@ use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use lsp_types::{
-    Diff, InitializeResult, MessageType, Range, ServerCapabilities, ServerInfo, ShowMessageParams, notification,
-    request,
+    Diff, InitializeResult, MessageType, PositionEncodingKind, Range, ServerCapabilities, ServerInfo,
+    ShowMessageParams, notification, request,
 };
 use tower::ServiceBuilder;
 use tracing::{Level, info};
@@ -49,16 +49,22 @@ pub(crate) async fn start_lsp() {
                 eprintln!("Initialize with {params:?}");
                 Ok(InitializeResult {
                     capabilities: ServerCapabilities {
+                        position_encoding: Some(PositionEncodingKind::UTF16),
                         // hover_provider: Some(HoverProviderCapability::Simple(true)),
                         // definition_provider: Some(OneOf::Left(true)),
-                        diff: Some(true),
+                        // diff: Some(true),
+                        // diff: None,
+                        experimental: Some(serde_json::json!({
+                            "diff": true,
+                        })),
                         ..ServerCapabilities::default()
                     },
                     server_info: Some(ServerInfo {
                         name: "difftastic-lsp".to_string(),
                         version: Some("0.1.0".to_string()),
                     }),
-                    offset_encoding: Some("utf-8".to_string()),
+                    // offset_encoding: Some("utf-8".to_string()),
+                    offset_encoding: None,
                 })
                 // Ok(MyInitializeResult {
                 //     capabilities: MyServerCapabilities {
