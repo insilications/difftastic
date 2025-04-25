@@ -78,7 +78,7 @@ use crate::parse::syntax;
 static GLOBAL: MiMalloc = MiMalloc;
 
 use std::path::Path;
-use std::{env, thread};
+use std::{env, process, thread};
 
 use humansize::{BINARY, FormatSizeOptions, format_size};
 use owo_colors::OwoColorize;
@@ -87,12 +87,15 @@ use strum::IntoEnumIterator;
 use typed_arena::Arena;
 
 use crate::diff::sliders::fix_all_sliders;
+use crate::lsp::custom::run_server_stdio;
 use crate::options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode};
 use crate::summary::{DiffResult, FileContent, FileFormat};
 use crate::syntax::init_next_prev;
 use crate::{dijkstra::mark_syntax, lines::MaxLine, parse::syntax::init_all_info, parse::tree_sitter_parser as tsp};
 
-// use tracing::Level;
+const BACKTRACE_ENV: &str = "RUST_BACKTRACE";
+
+use tracing::Level;
 
 // extern crate pretty_env_logger;
 
@@ -110,21 +113,36 @@ fn reset_sigpipe() {
 }
 
 /// The entrypoint.
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
+// #[tokio::main(flavor = "current_thread")]
+fn main() {
+    if env::var(BACKTRACE_ENV).is_err() {
+        env::set_var(BACKTRACE_ENV, "short");
+    }
+
     // pretty_env_logger::try_init_timed_custom_env("DFT_LOG")
     //     .expect("The logger has not been previously initialized");
     reset_sigpipe();
 
-    // tracing_subscriber::fmt()
-    //     .with_max_level(Level::INFO)
-    //     .with_ansi(false)
-    //     .with_writer(std::io::stderr)
-    //     .init();
-
     if options::parse_lsp_opt() {
-        // println!("LSP set");
-        lsp::start_lsp().await;
+        tracing_subscriber::fmt()
+            .with_max_level(Level::INFO)
+            .with_ansi(false)
+            .with_writer(std::io::stderr)
+            .init();
+
+        // lsp::start_lsp().await;
+        let ret = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to spawn tokio runtime")
+            .block_on(run_server_stdio());
+        match ret {
+            Ok(()) => {}
+            Err(err) => {
+                tracing::error!("Unexpected error: {err:#}");
+                process::exit(101);
+            }
+        }
     } else {
         match options::parse_args() {
             Mode::DumpTreeSitter {
