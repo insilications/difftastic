@@ -165,7 +165,7 @@ impl Server {
             capabilities: ServerCapabilities {
                 position_encoding: Some(PositionEncodingKind::UTF16),
                 text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
-                    open_close: Some(true),
+                    open_close: Some(false),
                     change: Some(TextDocumentSyncKind::NONE),
                     will_save: None,
                     will_save_wait_until: None,

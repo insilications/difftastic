@@ -76,10 +76,20 @@ pub async fn run_server_stdio() -> Result<()> {
 
     let init_messages: Vec<ShowMessageParams> = Vec::new();
 
-    let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
-    let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
-    // let stdin = PipeStdin::lock_tokio().unwrap();
-    // let stdout = PipeStdout::lock_tokio().unwrap();
+    // let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
+    // let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
+    // Prefer truly asynchronous piped stdin/stdout without blocking tasks.
+    #[cfg(unix)]
+    let (stdin, stdout) = (
+        async_lsp::stdio::PipeStdin::lock_tokio().context("stdin is not pipe-like")?,
+        async_lsp::stdio::PipeStdout::lock_tokio().context("stdout is not pipe-like")?,
+    );
+    // Fallback to spawn blocking read/write otherwise.
+    #[cfg(not(unix))]
+    let (stdin, stdout) = (
+        tokio_util::compat::TokioAsyncReadCompatExt::compat(tokio::io::stdin()),
+        tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(tokio::io::stdout()),
+    );
 
     let (mainloop, _) = async_lsp::MainLoop::new_server(|client| {
         ServiceBuilder::new()
