@@ -125,7 +125,7 @@ fn main() {
 
     if options::parse_lsp_opt() {
         tracing_subscriber::fmt()
-            .with_max_level(Level::INFO)
+            .with_max_level(Level::DEBUG)
             .with_ansi(false)
             .with_writer(std::io::stderr)
             .init();

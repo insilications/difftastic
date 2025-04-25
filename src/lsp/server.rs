@@ -32,6 +32,8 @@ use std::ops::ControlFlow;
 // use tokio::task;
 // use tokio::task::JoinHandle;
 
+use crate::lsp::lsp_ext;
+
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
 const LSP_SERVER_VERSION: &str = "0.1.0";
 // const FLAKE_ARCHIVE_PROGRESS_TOKEN: &str = "nil/flakeArchiveProgress";
@@ -97,6 +99,7 @@ impl Server {
                 ControlFlow::Break(Ok(()))
             })
             //// Notifications ////
+            .notification::<lsp_ext::DidOpenTextDocumentCustom>(Self::on_did_open_custom)
             .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
             .notification::<notif::DidCloseTextDocument>(Self::on_did_close)
             .notification::<notif::DidChangeTextDocument>(Self::on_did_change)
@@ -300,6 +303,11 @@ impl Server {
     //     }
     //     tracing::info!("Registered file watching for flake files");
     // }
+
+    fn on_did_open_custom(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
+        tracing::info!("notif::DidOpenTextDocumentCustom with params: {:?}", params);
+        ControlFlow::Continue(())
+    }
 
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
         tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);

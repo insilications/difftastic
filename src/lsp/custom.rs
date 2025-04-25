@@ -13,7 +13,6 @@ use async_lsp::client_monitor::ClientProcessMonitorLayer;
 use async_lsp::concurrency::ConcurrencyLayer;
 use async_lsp::panic::CatchUnwindLayer;
 use async_lsp::server::LifecycleLayer;
-use async_lsp::stdio::{PipeStdin, PipeStdout};
 use async_lsp::tracing::TracingLayer;
 // use ide::VfsPath;
 // use lsp_types::Url;
@@ -23,7 +22,7 @@ use tower::ServiceBuilder;
 // pub(crate) use server::{Server, StateSnapshot};
 // pub(crate) use vfs::{LineMap, Vfs};
 
-use crate::lsp::meter::MeterLayer;
+// use crate::lsp::meter::MeterLayer;
 // use crate::lsp::server::{Server, StateSnapshot};
 use crate::lsp::server::Server;
 
@@ -93,13 +92,14 @@ pub async fn run_server_stdio() -> Result<()> {
 
     let (mainloop, _) = async_lsp::MainLoop::new_server(|client| {
         ServiceBuilder::new()
-            .layer(
-                TracingLayer::new()
-                    .request(|r| tracing::info_span!("request", method = r.method))
-                    .notification(|n| tracing::info_span!("notification", method = n.method))
-                    .event(|e| tracing::info_span!("event", method = e.type_name())),
-            )
-            .layer(MeterLayer)
+            // .layer(
+            //     TracingLayer::new()
+            //         .request(|r| tracing::info_span!("request", method = r.method))
+            //         .notification(|n| tracing::info_span!("notification", method = n.method))
+            //         .event(|e| tracing::info_span!("event", method = e.type_name())),
+            // )
+            .layer(TracingLayer::default())
+            // .layer(MeterLayer)
             .layer(LifecycleLayer::default())
             .layer(CatchUnwindLayer::default())
             // TODO: Use `CatchUnwindLayer`.
