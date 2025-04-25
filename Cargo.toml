@@ -112,12 +112,6 @@ tree-sitter-toml-ng = "0.7.0"
 tree-sitter-typescript = "0.23.2"
 tree-sitter-xml = "0.7.0"
 tree-sitter-yaml = "0.7.0"
-async-lsp = { version = "0.2.2", features = [
-        "async-io",
-        "omni-trait",
-        "tokio",
-        "tracing",
-], path = "crates/async-lsp" }
 tokio = { version = "1.44.2", features = [
         "io-std",
         "io-util",
@@ -128,7 +122,8 @@ tokio = { version = "1.44.2", features = [
 ] }
 async-io = "2.4.0"
 futures = { version = "0.3.31", features = ["async-await", "std"] }
-lsp-types = { version = "0.97.0", features = ["proposed"], path  = "crates/lsp-types" }
+async-lsp = { version = "0.2.2", features = ["async-io", "omni-trait", "tokio", "tracing"], path = "crates/async-lsp/" }
+lsp-types = { version = "0.97.0", features = ["proposed"] }
 tower-layer = "0.3.3"
 tower-service = "0.3.3"
 async-process = "2.3.0"

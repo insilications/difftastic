@@ -3,7 +3,8 @@ set -eo pipefail
 if [[ -n "$1" ]]; then
   cat "$1"
 else
-  cat ./metaModel.json
+  curl --fail -L 'https://github.com/microsoft/language-server-protocol/raw/38c3746bc86c8ae7bc74f49afbd398b132bc627e/_specifications/lsp/3.17/metaModel/metaModel.json' |
+    tee ./metaModel.json
 fi | jq -r '
   def is_excluded:
     .method |

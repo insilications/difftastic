@@ -2,9 +2,6 @@ use std::future::ready;
 use std::ops::ControlFlow;
 use std::time::Duration;
 
-// Change the import to directly access the external crate since custom_lsp_types is its own crate
-// use difftastic::custom_lsp_types::{MyInitializeResult, MyServerCapabilities};
-
 use async_lsp::ClientSocket;
 use async_lsp::client_monitor::ClientProcessMonitorLayer;
 use async_lsp::concurrency::ConcurrencyLayer;
@@ -12,11 +9,12 @@ use async_lsp::panic::CatchUnwindLayer;
 use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
+use lsp_types::notification::Notification;
+use lsp_types::request::{self as req, Request};
 use lsp_types::{
-    Diff, InitializeResult, InitializedParams, MessageType, PositionEncodingKind, Range, ServerCapabilities,
-    ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, notification,
-    request::{self as req},
+    InitializeResult, InitializedParams, MessageType, PositionEncodingKind, Range, ServerCapabilities, ServerInfo,
+    ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, notification as notif,
 };
 use tower::ServiceBuilder;
 use tracing::{Level, debug, info};
@@ -124,32 +122,32 @@ pub(crate) async fn start_lsp() {
                 ready(Ok(()))
             })
             // .request::<request::GotoDefinition, _>(|_, _| async move { unimplemented!("Not yet implemented!") })
-            .notification::<notification::Initialized>(|_, _params: InitializedParams| {
-                info!("notification::Initialized");
+            .notification::<notif::Initialized>(|_, _params: InitializedParams| {
+                info!("notif::Initialized");
                 ControlFlow::Continue(())
             })
-            .notification::<notification::Exit>(|_, _| {
-                info!("notification::Exit");
+            .notification::<notif::Exit>(|_, _| {
+                info!("notif::Exit");
                 ControlFlow::Break(Ok(()))
             })
-            .notification::<notification::DidChangeConfiguration>(|_, _| {
-                info!("notification::DidChangeConfiguration");
+            .notification::<notif::DidChangeConfiguration>(|_, _| {
+                info!("notif::DidChangeConfiguration");
                 ControlFlow::Continue(())
             })
-            .notification::<notification::DidOpenTextDocument>(|_, params| {
-                info!("notification::DidOpenTextDocument with params: {:?}", params);
+            .notification::<notif::DidOpenTextDocument>(|_, params| {
+                info!("notif::DidOpenTextDocument with params: {:?}", params);
                 ControlFlow::Continue(())
             })
-            .notification::<notification::DidChangeTextDocument>(|_, _| {
-                info!("notification::DidChangeTextDocument");
+            .notification::<notif::DidChangeTextDocument>(|_, _| {
+                info!("notif::DidChangeTextDocument");
                 ControlFlow::Continue(())
             })
-            .notification::<notification::DidCloseTextDocument>(|_, _| {
-                info!("notification::DidCloseTextDocument");
+            .notification::<notif::DidCloseTextDocument>(|_, _| {
+                info!("notif::DidCloseTextDocument");
                 ControlFlow::Continue(())
             })
-            .notification::<notification::DidSaveTextDocument>(|_, _| {
-                info!("notification::DidSaveTextDocument");
+            .notification::<notif::DidSaveTextDocument>(|_, _| {
+                info!("notif::DidSaveTextDocument");
                 ControlFlow::Continue(())
             })
             .event::<TickEvent>(|st, _| {

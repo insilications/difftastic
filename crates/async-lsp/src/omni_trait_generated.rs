@@ -34,7 +34,6 @@ define! {
         "textDocument/completion", completion;
         "completionItem/resolve", completion_item_resolve;
         "textDocument/hover", hover;
-        "textDocument/diff", diff;
         "textDocument/signatureHelp", signature_help;
         "textDocument/definition", definition;
         "textDocument/references", references;
