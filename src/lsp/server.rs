@@ -20,6 +20,7 @@ use lsp_types::{
 };
 // use nix_interop::nixos_options::{self, NixosOptions};
 // use nix_interop::{FLAKE_FILE, FLAKE_LOCK_FILE, FlakeUrl, flake_lock, flake_output};
+use serde_json::{Value, json};
 use std::backtrace::Backtrace;
 use std::borrow::BorrowMut;
 use std::cell::Cell;
@@ -33,7 +34,7 @@ use std::pin::pin;
 use std::sync::{Arc, Once, RwLock};
 use std::time::Duration;
 use std::{fmt, panic};
-use tokio::sync::watch;
+// use tokio::sync::watch;
 use tokio::task;
 use tokio::task::JoinHandle;
 
@@ -94,11 +95,11 @@ impl Server {
             .request::<req::Initialize, _>(Self::on_initialize)
             .notification::<notif::Initialized>(Self::on_initialized)
             .request::<req::Shutdown, _>(|_, _| {
-                info!("req::Shutdown");
+                tracing::info!("req::Shutdown");
                 ready(Ok(()))
             })
             .notification::<notif::Exit>(|_, _| {
-                info!("notif::Exit");
+                tracing::info!("notif::Exit");
                 ControlFlow::Break(Ok(()))
             })
             //// Notifications ////
@@ -164,8 +165,8 @@ impl Server {
         params: InitializeParams,
     ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
         match serde_json::to_string(&params) {
-            Ok(json_params) => info!(params = %json_params, "Initialize with"),
-            Err(_) => debug!(raw_params = ?params, "Raw initialize with"),
+            Ok(json_params) => tracing::info!(params = %json_params, "Initialize with"),
+            Err(_) => tracing::debug!(raw_params = ?params, "Raw initialize with"),
         };
         ready(Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -232,7 +233,7 @@ impl Server {
     }
 
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
-        info!("notif::Initialized");
+        tracing::info!("notif::Initialized");
         ControlFlow::Continue(())
 
         // for msg in std::mem::take(&mut self.init_messages) {
@@ -305,7 +306,7 @@ impl Server {
     // }
 
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
-        info!("notif::DidOpenTextDocument with params: {:?}", params);
+        tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);
         // // Ignore the open event for unsupported files, thus all following interactions
         // // will error due to unopened files.
         // let len = params.text_document.text.len();
@@ -339,7 +340,7 @@ impl Server {
     }
 
     fn on_did_close(&mut self, params: DidCloseTextDocumentParams) -> NotifyResult {
-        info!("notif::DidCloseTextDocument");
+        tracing::info!("notif::DidCloseTextDocument");
         // // N.B. Don't clear text here.
         // // `DidCloseTextDocument` means the client ends its maintenance to a file but
         // // not deletes it.
@@ -358,7 +359,7 @@ impl Server {
     }
 
     fn on_did_change(&mut self, params: DidChangeTextDocumentParams) -> NotifyResult {
-        info!("notif::DidChangeTextDocument");
+        tracing::info!("notif::DidChangeTextDocument");
         // let mut vfs = self.vfs.write().unwrap();
         // let uri = params.text_document.uri;
         // // Ignore files not maintained in Vfs.
@@ -391,7 +392,7 @@ impl Server {
     }
 
     fn on_did_save(&mut self, _params: DidSaveTextDocumentParams) -> NotifyResult {
-        info!("notif::DidSaveTextDocument");
+        tracing::info!("notif::DidSaveTextDocument");
         // As stated in https://github.com/microsoft/language-server-protocol/issues/676,
         // this notification's parameters should be ignored and the actual config queried separately.
         // self.spawn_reload_config();
@@ -399,7 +400,7 @@ impl Server {
     }
 
     fn on_did_change_configuration(&mut self, _params: DidChangeConfigurationParams) -> NotifyResult {
-        info!("notif::DidChangeConfiguration");
+        tracing::info!("notif::DidChangeConfiguration");
         // As stated in https://github.com/microsoft/language-server-protocol/issues/676,
         // this notification's parameters should be ignored and the actual config queried separately.
         // self.spawn_reload_config();
