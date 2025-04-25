@@ -10,12 +10,13 @@ use lsp_types::request::{self as req, Request};
 use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, FileChangeType, FileEvent, FileSystemWatcher, GlobPattern, InitializeParams,
-    InitializeResult, InitializedParams, MessageActionItem, MessageActionItemProperty, MessageType, NumberOrString,
-    OneOf, ProgressParams, ProgressParamsValue, PublishDiagnosticsParams, Registration, RegistrationParams,
-    RelativePattern, ServerInfo, ShowMessageParams, ShowMessageRequestParams, Url, WorkDoneProgress,
-    WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport,
-    notification as notif,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, FileEvent, FileSystemWatcher, GlobPattern,
+    InitializeParams, InitializeResult, InitializedParams, MessageActionItem, MessageActionItemProperty, MessageType,
+    NumberOrString, OneOf, PositionEncodingKind, ProgressParams, ProgressParamsValue, PublishDiagnosticsParams,
+    Registration, RegistrationParams, RelativePattern, ServerCapabilities, ServerInfo, ShowMessageParams,
+    ShowMessageRequestParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+    WorkDoneProgressEnd, WorkDoneProgressReport, notification as notif,
 };
 // use nix_interop::nixos_options::{self, NixosOptions};
 // use nix_interop::{FLAKE_FILE, FLAKE_LOCK_FILE, FlakeUrl, flake_lock, flake_output};
@@ -36,15 +37,16 @@ use tokio::sync::watch;
 use tokio::task;
 use tokio::task::JoinHandle;
 
-const LSP_SERVER_NAME: &str = "nil";
+const LSP_SERVER_NAME: &str = "difftastic-lsp";
+const LSP_SERVER_VERSION: &str = "0.1.0";
 const FLAKE_ARCHIVE_PROGRESS_TOKEN: &str = "nil/flakeArchiveProgress";
 const LOAD_INPUT_FLAKE_PROGRESS_TOKEN: &str = "nil/loadInputFlakeProgress";
 const LOAD_NIXOS_OPTIONS_PROGRESS_TOKEN: &str = "nil/loadNixosOptionsProgress";
 
-const MAX_DIAGNOSTICS_CNT: usize = 128;
+// const MAX_DIAGNOSTICS_CNT: usize = 128;
 
-const PROGRESS_REPORT_PERIOD: Duration = Duration::from_millis(100);
-const LOAD_FLAKE_WORKSPACE_DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
+// const PROGRESS_REPORT_PERIOD: Duration = Duration::from_millis(100);
+// const LOAD_FLAKE_WORKSPACE_DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
 
@@ -58,7 +60,7 @@ pub struct Server {
     /// This contains an internal `RwLock` and must not lock together with `vfs`.
     // host: AnalysisHost,
     // vfs: Arc<RwLock<Vfs>>,
-    opened_files: HashMap<Url, FileData>,
+    // opened_files: HashMap<Url, FileData>,
     // config: Arc<Config>,
     /// Tried to load flake?
     /// This is used to reload flake only once after the configuration is first loaded.
@@ -91,13 +93,20 @@ impl Server {
             //// Lifecycle ////
             .request::<req::Initialize, _>(Self::on_initialize)
             .notification::<notif::Initialized>(Self::on_initialized)
-            .request::<req::Shutdown, _>(|_, _| ready(Ok(())))
-            .notification::<notif::Exit>(|_, _| ControlFlow::Break(Ok(())))
+            .request::<req::Shutdown, _>(|_, _| {
+                info!("req::Shutdown");
+                ready(Ok(()))
+            })
+            .notification::<notif::Exit>(|_, _| {
+                info!("notif::Exit");
+                ControlFlow::Break(Ok(()))
+            })
             //// Notifications ////
             .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
             .notification::<notif::DidCloseTextDocument>(Self::on_did_close)
             .notification::<notif::DidChangeTextDocument>(Self::on_did_change)
-            .notification::<notif::DidChangeConfiguration>(Self::on_did_change_configuration);
+            .notification::<notif::DidChangeConfiguration>(Self::on_did_change_configuration)
+            .notification::<notif::DidSaveTextDocument>(Self::on_did_save);
         // NB. This handler is mandatory.
         // > In former implementations clients pushed file events without the server actively asking for it.
         // Ref: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workspace_didChangeWatchedFiles
@@ -134,7 +143,7 @@ impl Server {
         Self {
             // host: AnalysisHost::default(),
             // vfs: Arc::new(RwLock::new(Vfs::new())),
-            opened_files: HashMap::default(),
+            // opened_files: HashMap::default(),
             // Will be set during initialization.
             // config: Arc::new(Config::new("/non-existing-path".into())),
             tried_flake_load: false,
@@ -154,81 +163,115 @@ impl Server {
         &mut self,
         params: InitializeParams,
     ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
-        tracing::info!("Init params: {params:?}");
-
-        let (server_caps, final_caps) = negotiate_capabilities(&params);
-        self.capabilities = final_caps;
-
-        // TODO: Multi-workspace support.
-        let root_path = match params
-            .workspace_folders
-            .as_ref()
-            .into_iter()
-            .flatten()
-            .next()
-            .and_then(|ws| ws.uri.to_file_path().ok())
-        {
-            Some(path) => path,
-            None => std::env::current_dir().expect("Failed to the current directory"),
+        match serde_json::to_string(&params) {
+            Ok(json_params) => info!(params = %json_params, "Initialize with"),
+            Err(_) => debug!(raw_params = ?params, "Raw initialize with"),
         };
-
-        // Allow the client to pass initial settings through `initializationOptions`, especially
-        // when they do not support `workspace/configuration`.
-        *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
-        if let Some(options) = params.initialization_options {
-            if options.as_object().filter(|o| !o.is_empty()).is_some() {
-                tracing::debug!("Initialization options: {options}");
-                self.on_update_config(UpdateConfigEvent(options));
-            }
-        }
-
         ready(Ok(InitializeResult {
-            capabilities: server_caps,
+            capabilities: ServerCapabilities {
+                position_encoding: Some(PositionEncodingKind::UTF16),
+                text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                    open_close: Some(true),
+                    change: Some(TextDocumentSyncKind::NONE),
+                    will_save: None,
+                    will_save_wait_until: None,
+                    save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                })),
+                // hover_provider: Some(HoverProviderCapability::Simple(true)),
+                // definition_provider: Some(OneOf::Left(true)),
+                // diff: Some(true),
+                // diff: None,
+                experimental: Some(serde_json::json!({
+                    "diff": true,
+                })),
+                ..ServerCapabilities::default()
+            },
             server_info: Some(ServerInfo {
                 name: LSP_SERVER_NAME.into(),
-                version: option_env!("CFG_RELEASE").map(Into::into),
+                version: Some(LSP_SERVER_VERSION.into()),
             }),
+            // offset_encoding: Some("utf-8".to_string()),
+            offset_encoding: None,
         }))
+
+        // tracing::info!("Init params: {params:?}");
+
+        // let (server_caps, final_caps) = negotiate_capabilities(&params);
+        // self.capabilities = final_caps;
+
+        // // TODO: Multi-workspace support.
+        // let root_path = match params
+        //     .workspace_folders
+        //     .as_ref()
+        //     .into_iter()
+        //     .flatten()
+        //     .next()
+        //     .and_then(|ws| ws.uri.to_file_path().ok())
+        // {
+        //     Some(path) => path,
+        //     None => std::env::current_dir().expect("Failed to the current directory"),
+        // };
+
+        // // Allow the client to pass initial settings through `initializationOptions`, especially
+        // // when they do not support `workspace/configuration`.
+        // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
+        // if let Some(options) = params.initialization_options {
+        //     if options.as_object().filter(|o| !o.is_empty()).is_some() {
+        //         tracing::debug!("Initialization options: {options}");
+        //         self.on_update_config(UpdateConfigEvent(options));
+        //     }
+        // }
+
+        // ready(Ok(InitializeResult {
+        //     capabilities: server_caps,
+        //     server_info: Some(ServerInfo {
+        //         name: LSP_SERVER_NAME.into(),
+        //         version: option_env!("CFG_RELEASE").map(Into::into),
+        //     }),
+        // }))
     }
 
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
-        for msg in std::mem::take(&mut self.init_messages) {
-            tracing::warn!("Init message ({:?}): {}", msg.typ, msg.message);
-            let _: Result<_, _> = self.client.show_message(msg);
-        }
-
-        // Load configurations before loading flake.
-        // The latter depends on `nix.binary`.
-        // FIXME: This is still racy since `on_did_open` can also trigger flake reloading and would
-        // read uninitialized configs.
-        self.spawn_reload_config();
-
-        // Make a virtual event to trigger loading of flake files for flake info.
-        let flake_files_changed_event = DidChangeWatchedFilesParams {
-            changes: [FLAKE_LOCK_FILE, FLAKE_FILE]
-                .into_iter()
-                .map(|name| {
-                    let uri = Url::from_file_path(self.config.root_path.join(name)).expect("Root must be absolute");
-                    let typ = FileChangeType::CREATED;
-                    FileEvent { uri, typ }
-                })
-                .collect(),
-        };
-        if self.capabilities.watch_files {
-            tokio::spawn({
-                let config = self.config.clone();
-                let caps = self.capabilities.clone();
-                let mut client = self.client.clone();
-                async move {
-                    Self::register_watched_files(&config, &caps, &mut client).await;
-                    let _: Result<_, _> = client.emit(flake_files_changed_event);
-                }
-            });
-        } else {
-            self.on_did_change_watched_files(flake_files_changed_event)?;
-        }
-
+        info!("notif::Initialized");
         ControlFlow::Continue(())
+
+        // for msg in std::mem::take(&mut self.init_messages) {
+        //     tracing::warn!("Init message ({:?}): {}", msg.typ, msg.message);
+        //     let _: Result<_, _> = self.client.show_message(msg);
+        // }
+
+        // // Load configurations before loading flake.
+        // // The latter depends on `nix.binary`.
+        // // FIXME: This is still racy since `on_did_open` can also trigger flake reloading and would
+        // // read uninitialized configs.
+        // self.spawn_reload_config();
+
+        // // Make a virtual event to trigger loading of flake files for flake info.
+        // let flake_files_changed_event = DidChangeWatchedFilesParams {
+        //     changes: [FLAKE_LOCK_FILE, FLAKE_FILE]
+        //         .into_iter()
+        //         .map(|name| {
+        //             let uri = Url::from_file_path(self.config.root_path.join(name)).expect("Root must be absolute");
+        //             let typ = FileChangeType::CREATED;
+        //             FileEvent { uri, typ }
+        //         })
+        //         .collect(),
+        // };
+        // if self.capabilities.watch_files {
+        //     tokio::spawn({
+        //         let config = self.config.clone();
+        //         let caps = self.capabilities.clone();
+        //         let mut client = self.client.clone();
+        //         async move {
+        //             Self::register_watched_files(&config, &caps, &mut client).await;
+        //             let _: Result<_, _> = client.emit(flake_files_changed_event);
+        //         }
+        //     });
+        // } else {
+        //     self.on_did_change_watched_files(flake_files_changed_event)?;
+        // }
+
+        // ControlFlow::Continue(())
     }
 
     // async fn register_watched_files(config: &Config, caps: &NegotiatedCapabilities, client: &mut ClientSocket) {
@@ -344,6 +387,14 @@ impl Server {
         // // FIXME: This blocks.
         // self.apply_vfs_change();
 
+        ControlFlow::Continue(())
+    }
+
+    fn on_did_save(&mut self, _params: DidSaveTextDocumentParams) -> NotifyResult {
+        info!("notif::DidSaveTextDocument");
+        // As stated in https://github.com/microsoft/language-server-protocol/issues/676,
+        // this notification's parameters should be ignored and the actual config queried separately.
+        // self.spawn_reload_config();
         ControlFlow::Continue(())
     }
 
