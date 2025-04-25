@@ -100,25 +100,25 @@ pub(crate) async fn start_lsp() {
                 //     offset_encoding: Some("utf-32".to_string()),
                 // })
             })
-            .request::<req::DiffRequest, _>(|st, _| {
-                let client = st.client.clone();
-                // let counter = st.counter;
-                async move {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    client
-                        .notify::<notification::ShowMessage>(ShowMessageParams {
-                            typ: MessageType::INFO,
-                            message: "request::DiffRequest".into(),
-                        })
-                        .unwrap();
-                    Ok(Some(Diff {
-                        ranges: Some(Vec::from([Range {
-                            start: lsp_types::Position { line: 0, character: 0 },
-                            end: lsp_types::Position { line: 1, character: 1 },
-                        }])),
-                    }))
-                }
-            })
+            // .request::<req::DiffRequest, _>(|st, _| {
+            //     let client = st.client.clone();
+            //     // let counter = st.counter;
+            //     async move {
+            //         tokio::time::sleep(Duration::from_secs(1)).await;
+            //         client
+            //             .notify::<notification::ShowMessage>(ShowMessageParams {
+            //                 typ: MessageType::INFO,
+            //                 message: "request::DiffRequest".into(),
+            //             })
+            //             .unwrap();
+            //         Ok(Some(Diff {
+            //             ranges: Some(Vec::from([Range {
+            //                 start: lsp_types::Position { line: 0, character: 0 },
+            //                 end: lsp_types::Position { line: 1, character: 1 },
+            //             }])),
+            //         }))
+            //     }
+            // })
             .request::<req::Shutdown, _>(|_, _| {
                 info!("req::Shutdown");
                 ready(Ok(()))
