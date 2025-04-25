@@ -5,44 +5,38 @@ use anyhow::{Context, Result, bail, ensure};
 use async_lsp::router::Router;
 use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError};
 // use ide::{Analysis, AnalysisHost, Cancelled, FlakeInfo, VfsPath};
-use lsp_types::notification::Notification;
+// use lsp_types::notification::Notification;
 use lsp_types::request::{self as req, Request};
 use lsp_types::{
-    ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, FileEvent, FileSystemWatcher, GlobPattern,
-    InitializeParams, InitializeResult, InitializedParams, MessageActionItem, MessageActionItemProperty, MessageType,
-    NumberOrString, OneOf, PositionEncodingKind, ProgressParams, ProgressParamsValue, PublishDiagnosticsParams,
-    Registration, RegistrationParams, RelativePattern, ServerCapabilities, ServerInfo, ShowMessageParams,
-    ShowMessageRequestParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-    WorkDoneProgressEnd, WorkDoneProgressReport, notification as notif,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind,
+    SaveOptions, ServerCapabilities, ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, notification as notif,
 };
 // use nix_interop::nixos_options::{self, NixosOptions};
 // use nix_interop::{FLAKE_FILE, FLAKE_LOCK_FILE, FlakeUrl, flake_lock, flake_output};
-use serde_json::{Value, json};
-use std::backtrace::Backtrace;
-use std::borrow::BorrowMut;
-use std::cell::Cell;
-use std::collections::HashMap;
+// use std::backtrace::Backtrace;
+// use std::borrow::BorrowMut;
+// use std::cell::Cell;
+// use std::collections::HashMap;
 use std::future::{Future, ready};
-use std::io::{ErrorKind, Read};
+// use std::io::{ErrorKind, Read};
 use std::ops::ControlFlow;
-use std::panic::UnwindSafe;
-use std::path::Path;
-use std::pin::pin;
-use std::sync::{Arc, Once, RwLock};
-use std::time::Duration;
-use std::{fmt, panic};
+// use std::panic::UnwindSafe;
+// use std::path::Path;
+// use std::pin::pin;
+// use std::sync::{Arc, Once, RwLock};
+// use std::time::Duration;
+// use std::{fmt, panic};
 // use tokio::sync::watch;
-use tokio::task;
-use tokio::task::JoinHandle;
+// use tokio::task;
+// use tokio::task::JoinHandle;
 
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
 const LSP_SERVER_VERSION: &str = "0.1.0";
-const FLAKE_ARCHIVE_PROGRESS_TOKEN: &str = "nil/flakeArchiveProgress";
-const LOAD_INPUT_FLAKE_PROGRESS_TOKEN: &str = "nil/loadInputFlakeProgress";
-const LOAD_NIXOS_OPTIONS_PROGRESS_TOKEN: &str = "nil/loadNixosOptionsProgress";
+// const FLAKE_ARCHIVE_PROGRESS_TOKEN: &str = "nil/flakeArchiveProgress";
+// const LOAD_INPUT_FLAKE_PROGRESS_TOKEN: &str = "nil/loadInputFlakeProgress";
+// const LOAD_NIXOS_OPTIONS_PROGRESS_TOKEN: &str = "nil/loadNixosOptionsProgress";
 
 // const MAX_DIAGNOSTICS_CNT: usize = 128;
 
@@ -71,7 +65,7 @@ pub struct Server {
     diagnostic_version: u64,
 
     // Ongoing tasks.
-    load_flake_workspace_fut: Option<JoinHandle<()>>,
+    // load_flake_workspace_fut: Option<JoinHandle<()>>,
 
     // Immutable (mostly).
     client: ClientSocket,
@@ -151,8 +145,7 @@ impl Server {
             workspace_is_flake: false,
             diagnostic_version: 0,
 
-            load_flake_workspace_fut: None,
-
+            // load_flake_workspace_fut: None,
             client,
             // Will be set during initialization.
             // capabilities: NegotiatedCapabilities::default(),
@@ -176,7 +169,10 @@ impl Server {
                     change: Some(TextDocumentSyncKind::NONE),
                     will_save: None,
                     will_save_wait_until: None,
-                    save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                    // save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                    save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+                        include_text: Some(false),
+                    })),
                 })),
                 // hover_provider: Some(HoverProviderCapability::Simple(true)),
                 // definition_provider: Some(OneOf::Left(true)),
