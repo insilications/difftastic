@@ -1,12 +1,12 @@
 // use crate::capabilities::{NegotiatedCapabilities, negotiate_capabilities};
 // use crate::config::{CONFIG_KEY, Config};
 // use crate::{MAX_FILE_LEN, UrlExt, Vfs, convert, handler, lsp_ext};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::Result;
 use async_lsp::router::Router;
-use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError};
+use async_lsp::{ClientSocket, ResponseError};
 // use ide::{Analysis, AnalysisHost, Cancelled, FlakeInfo, VfsPath};
 // use lsp_types::notification::Notification;
-use lsp_types::request::{self as req, Request};
+use lsp_types::request::{self as req};
 use lsp_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidSaveTextDocumentParams,
     InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind, SaveOptions, ServerCapabilities,
@@ -61,10 +61,10 @@ pub struct Server {
     // config: Arc<Config>,
     /// Tried to load flake?
     /// This is used to reload flake only once after the configuration is first loaded.
-    tried_flake_load: bool,
+    // tried_flake_load: bool,
     /// Is this workspace a flake?
-    workspace_is_flake: bool,
-    diagnostic_version: u64,
+    // workspace_is_flake: bool,
+    // diagnostic_version: u64,
 
     // Ongoing tasks.
     // load_flake_workspace_fut: Option<JoinHandle<()>>,
@@ -76,11 +76,11 @@ pub struct Server {
     init_messages: Vec<ShowMessageParams>,
 }
 
-#[derive(Debug, Default)]
-struct FileData {
-    // XXX: `lsp_types::Diagnostic` has a very large memory footprint.
-    diagnostics: Vec<lsp_types::Diagnostic>,
-}
+// #[derive(Debug, Default)]
+// struct FileData {
+//     // XXX: `lsp_types::Diagnostic` has a very large memory footprint.
+//     diagnostics: Vec<lsp_types::Diagnostic>,
+// }
 
 impl Server {
     pub fn new_router(client: ClientSocket, init_messages: Vec<ShowMessageParams>) -> Router<Self> {
@@ -98,8 +98,9 @@ impl Server {
                 tracing::info!("notif::Exit");
                 ControlFlow::Break(Ok(()))
             })
+            .request::<lsp_ext::DidOpenTextDocumentCustom, _>(Self::on_did_open_custom)
             //// Notifications ////
-            .notification::<lsp_ext::DidOpenTextDocumentCustom>(Self::on_did_open_custom)
+            // .notification::<lsp_ext::DidOpenTextDocumentCustom>(Self::on_did_open_custom)
             // .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
             .notification::<notif::DidCloseTextDocument>(Self::on_did_close)
             .notification::<notif::DidChangeTextDocument>(Self::on_did_change)
@@ -144,9 +145,9 @@ impl Server {
             // opened_files: HashMap::default(),
             // Will be set during initialization.
             // config: Arc::new(Config::new("/non-existing-path".into())),
-            tried_flake_load: false,
-            workspace_is_flake: false,
-            diagnostic_version: 0,
+            // tried_flake_load: false,
+            // workspace_is_flake: false,
+            // diagnostic_version: 0,
 
             // load_flake_workspace_fut: None,
             client,
@@ -304,9 +305,15 @@ impl Server {
     //     tracing::info!("Registered file watching for flake files");
     // }
 
-    fn on_did_open_custom(&mut self, params: lsp_ext::DidOpenTextDocumentCustomParams) -> NotifyResult {
-        tracing::info!("notif::DidOpenTextDocumentCustom with params: {:?}", params);
-        ControlFlow::Continue(())
+    // impl Future<Output = Result<InitializeResult, ResponseError>>
+    fn on_did_open_custom(
+        &mut self,
+        params: lsp_ext::DidOpenTextDocumentCustomParams,
+    ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
+        tracing::info!("req::DidOpenTextDocumentCustom with params: {:?}", params);
+        let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
+
+        ready(Ok(Some(response)))
     }
 
     // fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
@@ -343,7 +350,7 @@ impl Server {
     //     ControlFlow::Continue(())
     // }
 
-    fn on_did_close(&mut self, params: DidCloseTextDocumentParams) -> NotifyResult {
+    fn on_did_close(&mut self, _params: DidCloseTextDocumentParams) -> NotifyResult {
         tracing::info!("notif::DidCloseTextDocument");
         // // N.B. Don't clear text here.
         // // `DidCloseTextDocument` means the client ends its maintenance to a file but
@@ -362,7 +369,7 @@ impl Server {
         ControlFlow::Continue(())
     }
 
-    fn on_did_change(&mut self, params: DidChangeTextDocumentParams) -> NotifyResult {
+    fn on_did_change(&mut self, _params: DidChangeTextDocumentParams) -> NotifyResult {
         tracing::info!("notif::DidChangeTextDocument");
         // let mut vfs = self.vfs.write().unwrap();
         // let uri = params.text_document.uri;
