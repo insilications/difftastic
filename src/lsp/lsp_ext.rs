@@ -1,4 +1,5 @@
 use lsp_types::notification::Notification;
+use serde::{Deserialize, Serialize};
 // use lsp_types::request::Request;
 
 // /// <https://github.com/microsoft/language-server-protocol/issues/1002>
@@ -21,6 +22,19 @@ use lsp_types::notification::Notification;
 pub enum DidOpenTextDocumentCustom {}
 
 impl Notification for DidOpenTextDocumentCustom {
-    type Params = lsp_types::DidOpenTextDocumentParams;
+    type Params = DidOpenTextDocumentCustomParams;
     const METHOD: &'static str = "textDocument/didOpenCustom";
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DidOpenTextDocumentCustomParams {
+    pub text_document: DidOpenTextDocumentCustomItem,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DidOpenTextDocumentCustomItem {
+    pub uri: String,
+    pub language_id: String,
 }

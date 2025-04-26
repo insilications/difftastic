@@ -8,10 +8,10 @@ use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError};
 // use lsp_types::notification::Notification;
 use lsp_types::request::{self as req, Request};
 use lsp_types::{
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind,
-    SaveOptions, ServerCapabilities, ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, notification as notif,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidSaveTextDocumentParams,
+    InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind, SaveOptions, ServerCapabilities,
+    ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, notification as notif,
 };
 // use nix_interop::nixos_options::{self, NixosOptions};
 // use nix_interop::{FLAKE_FILE, FLAKE_LOCK_FILE, FlakeUrl, flake_lock, flake_output};
@@ -100,7 +100,7 @@ impl Server {
             })
             //// Notifications ////
             .notification::<lsp_ext::DidOpenTextDocumentCustom>(Self::on_did_open_custom)
-            .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
+            // .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
             .notification::<notif::DidCloseTextDocument>(Self::on_did_close)
             .notification::<notif::DidChangeTextDocument>(Self::on_did_change)
             .notification::<notif::DidChangeConfiguration>(Self::on_did_change_configuration)
@@ -304,44 +304,44 @@ impl Server {
     //     tracing::info!("Registered file watching for flake files");
     // }
 
-    fn on_did_open_custom(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
+    fn on_did_open_custom(&mut self, params: lsp_ext::DidOpenTextDocumentCustomParams) -> NotifyResult {
         tracing::info!("notif::DidOpenTextDocumentCustom with params: {:?}", params);
         ControlFlow::Continue(())
     }
 
-    fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
-        tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);
-        // // Ignore the open event for unsupported files, thus all following interactions
-        // // will error due to unopened files.
-        // let len = params.text_document.text.len();
-        // if len > MAX_FILE_LEN {
-        //     self.client.show_message_ext(
-        //         MessageType::WARNING,
-        //         "Disable LSP functionalities for too large file ({len} > {MAX_FILE_LEN})",
-        //     );
-        //     return ControlFlow::Continue(());
-        // }
+    // fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
+    //     tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);
+    //     // // Ignore the open event for unsupported files, thus all following interactions
+    //     // // will error due to unopened files.
+    //     // let len = params.text_document.text.len();
+    //     // if len > MAX_FILE_LEN {
+    //     //     self.client.show_message_ext(
+    //     //         MessageType::WARNING,
+    //     //         "Disable LSP functionalities for too large file ({len} > {MAX_FILE_LEN})",
+    //     //     );
+    //     //     return ControlFlow::Continue(());
+    //     // }
 
-        // let uri = params.text_document.uri;
-        // self.opened_files.insert(uri.clone(), FileData::default());
-        // self.set_vfs_file_content(&uri, params.text_document.text);
+    //     // let uri = params.text_document.uri;
+    //     // self.opened_files.insert(uri.clone(), FileData::default());
+    //     // self.set_vfs_file_content(&uri, params.text_document.text);
 
-        // // We created a new flake.nix
-        // if !self.workspace_is_flake
-        //     && uri
-        //         .to_file_path()
-        //         .ok()
-        //         .as_ref()
-        //         .and_then(|path| path.file_name())
-        //         .is_some_and(|name| name == FLAKE_FILE)
-        // {
-        //     self.spawn_load_flake_workspace();
-        // }
+    //     // // We created a new flake.nix
+    //     // if !self.workspace_is_flake
+    //     //     && uri
+    //     //         .to_file_path()
+    //     //         .ok()
+    //     //         .as_ref()
+    //     //         .and_then(|path| path.file_name())
+    //     //         .is_some_and(|name| name == FLAKE_FILE)
+    //     // {
+    //     //     self.spawn_load_flake_workspace();
+    //     // }
 
-        // self.spawn_update_diagnostics();
+    //     // self.spawn_update_diagnostics();
 
-        ControlFlow::Continue(())
-    }
+    //     ControlFlow::Continue(())
+    // }
 
     fn on_did_close(&mut self, params: DidCloseTextDocumentParams) -> NotifyResult {
         tracing::info!("notif::DidCloseTextDocument");

@@ -165,7 +165,6 @@ dependencies = [
 name = "async-lsp"
 version = "0.2.2"
 dependencies = [
- "async-io",
  "futures",
  "lsp-types",
  "pin-project-lite",

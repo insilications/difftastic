@@ -148,7 +148,7 @@ pub(crate) async fn start_lsp() {
             })
             .notification::<notif::DidSaveTextDocument>(|_, _| {
                 info!("notif::DidSaveTextDocument");
-                ControlFlow::Continue(())
+            ControlFlow::Continue(())
             })
             .event::<TickEvent>(|st, _| {
                 // info!("tick");
