@@ -135,7 +135,7 @@ fn main() {
         let ret = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Failed to spawn tokio runtime")
+            .expect("Failed to spawn tokio runtime for the LSP server mode.")
             .block_on(run_server_stdio());
         match ret {
             Ok(()) => {}
@@ -376,6 +376,7 @@ fn main() {
                             }
                             DisplayMode::Json => display::json::print(&diff_result),
                             DisplayMode::Json2 => display::json2::print(&diff_result),
+                            DisplayMode::Json3 => display::json3::print(&diff_result),
                         }
                     }
                 }
@@ -577,6 +578,8 @@ fn diff_file_content(
         _ => &rhs_src,
     };
     println!("diff_file_content - display_path: {:?}", display_path);
+    println!("diff_file_content - display_options: {:?}", display_options);
+    println!("diff_file_content - diff_options: {:?}", diff_options);
 
     let language = guess(Path::new(display_path), guess_src, overrides);
     let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
@@ -894,6 +897,7 @@ fn print_diff_result(display_options: &DisplayOptions, summary: &DiffResult) {
                 }
                 DisplayMode::Json => unreachable!(),
                 DisplayMode::Json2 => unreachable!(),
+                DisplayMode::Json3 => unreachable!(),
             }
         }
         (FileContent::Binary, FileContent::Binary) => {
@@ -932,6 +936,53 @@ fn print_diff_result(display_options: &DisplayOptions, summary: &DiffResult) {
             println!("Binary contents changed.\n");
         }
     }
+}
+
+pub(crate) fn diff_for_lsp(
+    rhs_path: &FileArgument,
+    display_options: &DisplayOptions,
+    diff_options: &DiffOptions,
+) -> DiffResult {
+    let rhs_bytes = read_file_or_die(rhs_path);
+    let mut rhs_src = match guess_content(&rhs_bytes) {
+        ProbableFileKind::Text(src) => src,
+        ProbableFileKind::Binary => {
+            tracing::error!("error: rhs_src == ProbableFileKind::Binary");
+            std::process::exit(EXIT_BAD_ARGUMENTS);
+        }
+    };
+
+    if !rhs_src.is_empty() && !rhs_src.ends_with('\n') {
+        rhs_src.push('\n');
+    };
+
+    if diff_options.strip_cr {
+        rhs_src.retain(|c| c != '\r');
+    }
+
+    let display_path = match rhs_path {
+        FileArgument::NamedPath(path) => path.display().to_string(),
+        FileArgument::Stdin => {
+            tracing::error!("error: rhs_path == FileArgument::Stdin");
+            std::process::exit(3);
+        }
+        FileArgument::DevNull => {
+            tracing::error!("error: rhs_path == FileArgument::DevNull");
+            std::process::exit(4);
+        }
+    };
+
+    diff_file_content(
+        &display_path,
+        None,
+        rhs_path,
+        rhs_path,
+        &rhs_src,
+        &rhs_src,
+        display_options,
+        diff_options,
+        &vec![],
+    )
 }
 
 #[cfg(test)]

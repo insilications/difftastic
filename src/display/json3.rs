@@ -234,12 +234,12 @@ pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
         .map(File::from)
         .filter(|f| print_unchanged || f.status != Status::Unchanged)
         .collect::<Vec<File>>();
-    println!("{}", serde_json::to_string(&files).expect("failed to serialize files"));
+    tracing::info!("{}", serde_json::to_string(&files).expect("failed to serialize files"));
 }
 
 pub(crate) fn print(diff: &DiffResult) {
     let file = File::from(diff);
-    println!("{}", serde_json::to_string(&file).expect("failed to serialize file"))
+    tracing::info!("{}", serde_json::to_string(&file).expect("failed to serialize file"))
 }
 
 fn add_changes_to_side<'s>(
@@ -253,7 +253,7 @@ fn add_changes_to_side<'s>(
     // Ensure line_num is valid before indexing
     let line_idx = line_num.0 as usize;
     if line_idx >= src_lines.len() {
-        eprintln!("Warning: Invalid line number {} encountered.", line_num.0);
+        tracing::error!("Warning: Invalid line number {} encountered.", line_num.0);
         return;
     }
     let src_line = src_lines[line_idx];

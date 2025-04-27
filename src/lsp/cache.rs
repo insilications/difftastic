@@ -62,6 +62,7 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
             let file_content: Option<Arc<str>> = match this_tree.get_path(path) {
                 Ok(entry) if entry.kind() == Some(ObjectType::Blob) => {
                     let blob = repo.find_blob(entry.id())?;
+                    // ??????????????????????????????????????????????????????
                     // Allocate exactly once and share via Arc
                     Some(Arc::<str>::from(String::from_utf8_lossy(blob.content()).into_owned()))
                 }
@@ -148,13 +149,13 @@ pub struct VersionKey {
     path: FilePath,
 }
 
-/// (commit, path) ➜ `FileVersion`
+/// (commit id, path) ➜ `FileVersion`
 type VersionStore = HashMap<VersionKey, FileVersion>;
 
 /// For one file:  revspec ➜ commit id
 type RevIndexPerPath = HashMap<RevSpec, CommitId>;
 
-/// Top-level:  path ➜ (revspec ➜ commit)
+/// Top-level:  path ➜ (revspec ➜ commit id)
 type RevStore = HashMap<FilePath, RevIndexPerPath>;
 
 // Define the stores using Mutex/RwLock

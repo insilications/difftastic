@@ -14,7 +14,12 @@ use lsp_types::{
     request::{self as req},
 };
 
-use crate::lsp::{cache, lsp_ext, uri_ext::UriExt};
+use crate::{
+    diff_for_lsp,
+    display::{json3, style::BackgroundColor},
+    lsp::{cache, lsp_ext, uri_ext::UriExt},
+    options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument},
+};
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
 
@@ -341,6 +346,38 @@ impl Server {
             .unwrap()
             .iterate_path_versions(&relative_stripped_path);
 
+        let display_options = DisplayOptions {
+            background_color: BackgroundColor::Dark,
+            use_color: false,
+            display_mode: DisplayMode::Json3,
+            print_unchanged: true,
+            tab_width: 4,
+            terminal_width: 80,
+            num_context_lines: 0,
+            syntax_highlight: false,
+            sort_paths: false,
+        };
+
+        let diff_options = DiffOptions {
+            graph_limit: 9999999,
+            byte_limit: 1000000,
+            parse_error_limit: 10,
+            check_only: false,
+            ignore_comments: false,
+            strip_cr: true,
+        };
+
+        let kk = FileArgument::NamedPath(PathBuf::from(&params.text_document.uri));
+
+        let diff_result = diff_for_lsp(&kk, &display_options, &diff_options);
+        if diff_result.has_reportable_change() {
+            match display_options.display_mode {
+                DisplayMode::Inline | DisplayMode::SideBySide | DisplayMode::SideBySideShowBoth => {}
+                DisplayMode::Json => (),
+                DisplayMode::Json2 => (),
+                DisplayMode::Json3 => json3::print(&diff_result),
+            }
+        }
         ready(Ok(Some(response)))
     }
 

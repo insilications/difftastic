@@ -341,6 +341,7 @@ pub(crate) enum DisplayMode {
     SideBySideShowBoth,
     Json,
     Json2,
+    Json3,
 }
 
 #[derive(Eq, PartialEq, Debug)]
@@ -721,6 +722,7 @@ pub(crate) fn parse_args() -> Mode {
             DisplayMode::Json
         }
         "json2" => DisplayMode::Json2,
+        "json3" => DisplayMode::Json3,
         _ => {
             unreachable!("clap has already validated display")
         }

@@ -24,6 +24,26 @@
 					"label": ""
 				}
 			]
+		},
+		{
+			"path": "src/main.rs",
+			"bookmarks": [
+				{
+					"line": 356,
+					"column": 46,
+					"label": ""
+				},
+				{
+					"line": 462,
+					"column": 0,
+					"label": ""
+				},
+				{
+					"line": 564,
+					"column": 11,
+					"label": ""
+				}
+			]
 		}
 	]
 }
