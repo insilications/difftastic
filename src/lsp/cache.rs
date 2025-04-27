@@ -25,8 +25,7 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
     let pathspec = path
         .to_str() // Fallible but zero-cost if valid. Or use `to_string_lossy()`
         .context(format!(
-            "Path {:?} is not valid UTF-8 (libgit2 requires UTF-8 pathspecs)",
-            path
+            "Path {path:?} is not valid UTF-8 (libgit2 requires UTF-8 pathspecs)"
         ))?;
     diff_opts.pathspec(pathspec);
 
@@ -231,34 +230,37 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
     let path_tmp = Arc::new(path.to_path_buf());
 
     let Some((path_canonical, per_path_index)) = revs.get_key_value(&path_tmp) else {
-        eprintln!("No information stored for path {:?}", path);
+        tracing::error!("No information stored for path {:?}", path);
         return; // Nothing to do
     };
 
-    println!("Path           : {}\n", path.display());
+    tracing::info!("Path           : {}\n", path.display());
     for (revspec, commit_id) in per_path_index {
         if let Some(version) = versions.get(&VersionKey {
             commit: *commit_id,
             path: Arc::clone(path_canonical),
         }) {
-            println!("Revspec        : {revspec}");
-            println!("Summary        : {}", version.summary);
-            println!("Content Length : {}\n", version.content.len());
+            tracing::info!("Revspec        : {revspec}");
+            tracing::info!("Summary        : {}", version.summary);
+            tracing::info!("Content Length : {}\n", version.content.len());
         }
     }
 }
 
 pub struct AppStateShared {
     repo: Arc<Repository>, // Repository is Send+Sync, Arc is fine
+    // repo: Option<Arc<Repository>>,
     versions: SharedVersionStore,
     revs: SharedRevStore,
 }
 
 impl AppStateShared {
+    // pub fn new(repo_path: PathBuf) -> Result<Self> {
     pub fn new(repo_path: &Path) -> Result<Self> {
         let repo = Repository::open(repo_path)?;
         Ok(AppStateShared {
             repo: Arc::new(repo),
+            // repo: None,
             // Initialize empty HashMaps inside RwLock and Arc
             versions: Arc::new(RwLock::new(HashMap::new())),
             revs: Arc::new(RwLock::new(HashMap::new())),
@@ -267,7 +269,14 @@ impl AppStateShared {
 
     // Method to populate - takes &self because mutation happens *inside* the locks
     pub fn populate_history(&self, rev: &str, path: &Path) -> Result<()> {
+        // let repo = self
+        //     .repo
+        //     .as_ref()
+        //     .ok_or_else(|| anyhow::anyhow!("Repository not initialized"))?;
+        // let repo_handle = Arc::clone(repo);
+        // EXPLAIN CLONE???
         let repo_handle = Arc::clone(&self.repo);
+
         // Pass dereferenced repo handle to the function
         let history = commits_touching_path(&*repo_handle, rev, path)?;
 
@@ -328,6 +337,7 @@ impl AppStateShared {
     pub fn clone_state(&self) -> Self {
         AppStateShared {
             repo: Arc::clone(&self.repo),
+            // repo: self.repo.as_ref().map(Arc::clone),
             versions: Arc::clone(&self.versions),
             revs: Arc::clone(&self.revs),
         }

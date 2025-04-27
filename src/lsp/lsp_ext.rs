@@ -31,6 +31,7 @@ impl Request for DidOpenTextDocumentCustom {
 #[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DidOpenTextDocumentCustomParams {
+    pub rev: String,
     pub text_document: DidOpenTextDocumentCustomItem,
 }
 

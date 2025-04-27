@@ -793,6 +793,7 @@ pub(crate) fn parse_args() -> Mode {
             let lhs_arg = FileArgument::from_cli_argument(lhs_path);
             let rhs_arg = FileArgument::from_cli_argument(rhs_path);
             let display_path = build_display_path(&lhs_arg, &rhs_arg);
+            println!("parse_args - display_path: {:?}", display_path);
 
             let lhs_permissions = lhs_arg.permissions();
             let rhs_permissions = rhs_arg.permissions();

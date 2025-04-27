@@ -51,24 +51,24 @@ extern crate log;
 use display::style::print_warning;
 use log::info;
 use mimalloc::MiMalloc;
-use options::FilePermissions;
-use options::USAGE;
+use options::{FilePermissions, USAGE};
 
-use crate::conflicts::START_LHS_MARKER;
-use crate::conflicts::apply_conflict_markers;
-use crate::diff::changes::ChangeMap;
-use crate::diff::dijkstra::ExceededGraphLimit;
-use crate::diff::{dijkstra, unchanged};
-use crate::display::context::opposite_positions;
-use crate::display::hunks::{matched_pos_to_hunks, merge_adjacent};
-use crate::exit_codes::EXIT_BAD_ARGUMENTS;
-use crate::exit_codes::{EXIT_FOUND_CHANGES, EXIT_SUCCESS};
-use crate::files::{
-    ProbableFileKind, guess_content, read_file_or_die, read_files_or_die, read_or_die, relative_paths_in_either,
+use crate::{
+    conflicts::{START_LHS_MARKER, apply_conflict_markers},
+    diff::{changes::ChangeMap, dijkstra, dijkstra::ExceededGraphLimit, unchanged},
+    display::{
+        context::opposite_positions,
+        hunks::{matched_pos_to_hunks, merge_adjacent},
+    },
+    exit_codes::{EXIT_BAD_ARGUMENTS, EXIT_FOUND_CHANGES, EXIT_SUCCESS},
+    files::{
+        ProbableFileKind, guess_content, read_file_or_die, read_files_or_die, read_or_die, relative_paths_in_either,
+    },
+    parse::{
+        guess_language::{Language, LanguageOverride, guess, language_globs, language_name},
+        syntax,
+    },
 };
-use crate::parse::guess_language::language_globs;
-use crate::parse::guess_language::{Language, LanguageOverride, guess, language_name};
-use crate::parse::syntax;
 
 /// The global allocator used by difftastic.
 ///
@@ -77,8 +77,7 @@ use crate::parse::syntax;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-use std::path::Path;
-use std::{env, process, thread};
+use std::{env, path::Path, process, thread};
 
 use humansize::{BINARY, FormatSizeOptions, format_size};
 use owo_colors::OwoColorize;
@@ -86,12 +85,16 @@ use rayon::prelude::*;
 use strum::IntoEnumIterator;
 use typed_arena::Arena;
 
-use crate::diff::sliders::fix_all_sliders;
-use crate::lsp::custom::run_server_stdio;
-use crate::options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode};
-use crate::summary::{DiffResult, FileContent, FileFormat};
-use crate::syntax::init_next_prev;
-use crate::{dijkstra::mark_syntax, lines::MaxLine, parse::syntax::init_all_info, parse::tree_sitter_parser as tsp};
+use crate::{
+    diff::sliders::fix_all_sliders,
+    dijkstra::mark_syntax,
+    lines::MaxLine,
+    lsp::custom::run_server_stdio,
+    options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode},
+    parse::{syntax::init_all_info, tree_sitter_parser as tsp},
+    summary::{DiffResult, FileContent, FileFormat},
+    syntax::init_next_prev,
+};
 
 const BACKTRACE_ENV: &str = "RUST_BACKTRACE";
 
@@ -119,8 +122,6 @@ fn main() {
         env::set_var(BACKTRACE_ENV, "short");
     }
 
-    // pretty_env_logger::try_init_timed_custom_env("DFT_LOG")
-    //     .expect("The logger has not been previously initialized");
     reset_sigpipe();
 
     if options::parse_lsp_opt() {
@@ -144,6 +145,9 @@ fn main() {
             }
         }
     } else {
+        pretty_env_logger::try_init_timed_custom_env("DFT_LOG")
+            .expect("The logger has not been previously initialized");
+
         match options::parse_args() {
             Mode::DumpTreeSitter {
                 path,
@@ -572,6 +576,7 @@ fn diff_file_content(
         FileArgument::DevNull => &lhs_src,
         _ => &rhs_src,
     };
+    println!("diff_file_content - display_path: {:?}", display_path);
 
     let language = guess(Path::new(display_path), guess_src, overrides);
     let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));

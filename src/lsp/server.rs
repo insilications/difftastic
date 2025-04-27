@@ -1,22 +1,11 @@
-// use crate::capabilities::{NegotiatedCapabilities, negotiate_capabilities};
-// use crate::config::{CONFIG_KEY, Config};
-// use crate::{MAX_FILE_LEN, UrlExt, Vfs, convert, handler, lsp_ext};
-// use nix_interop::nixos_options::{self, NixosOptions};
-// use nix_interop::{FLAKE_FILE, FLAKE_LOCK_FILE, FlakeUrl, flake_lock, flake_output};
-// use std::backtrace::Backtrace;
-// use std::borrow::BorrowMut;
-// use std::cell::Cell;
-// use std::collections::HashMap;
-// use std::io::{ErrorKind, Read};
 use std::{
     future::{Future, ready},
     ops::ControlFlow,
+    path::{Path, PathBuf},
 };
 
 use anyhow::Result;
-use async_lsp::{ClientSocket, ResponseError, router::Router};
-// use ide::{Analysis, AnalysisHost, Cancelled, FlakeInfo, VfsPath};
-// use lsp_types::notification::Notification;
+use async_lsp::{ClientSocket, ErrorCode, ResponseError, router::Router};
 use lsp_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidSaveTextDocumentParams,
     InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind, SaveOptions, ServerCapabilities,
@@ -25,35 +14,12 @@ use lsp_types::{
     request::{self as req},
 };
 
-use crate::lsp::cache;
-// use std::panic::UnwindSafe;
-// use std::path::Path;
-// use std::pin::pin;
-// use std::sync::{Arc, Once, RwLock};
-// use std::time::Duration;
-// use std::{fmt, panic};
-// use tokio::sync::watch;
-// use tokio::task;
-// use tokio::task::JoinHandle;
-use crate::lsp::lsp_ext;
-
-const LSP_SERVER_NAME: &str = "difftastic-lsp";
-const LSP_SERVER_VERSION: &str = "0.1.0";
-// const FLAKE_ARCHIVE_PROGRESS_TOKEN: &str = "nil/flakeArchiveProgress";
-// const LOAD_INPUT_FLAKE_PROGRESS_TOKEN: &str = "nil/loadInputFlakeProgress";
-// const LOAD_NIXOS_OPTIONS_PROGRESS_TOKEN: &str = "nil/loadNixosOptionsProgress";
-
-// const MAX_DIAGNOSTICS_CNT: usize = 128;
-
-// const PROGRESS_REPORT_PERIOD: Duration = Duration::from_millis(100);
-// const LOAD_FLAKE_WORKSPACE_DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
+use crate::lsp::{cache, lsp_ext, uri_ext::UriExt};
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
 
-// struct UpdateConfigEvent(serde_json::Value);
-// struct UpdateDiagnostics(u64, Vec<(Url, Vec<lsp_types::Diagnostic>)>);
-// struct SetFlakeInfoEvent(Option<FlakeInfo>);
-// struct SetNixosOptionsEvent(NixosOptions);
+const LSP_SERVER_NAME: &str = "difftastic-lsp";
+const LSP_SERVER_VERSION: &str = "0.1.0";
 
 pub struct Server {
     // States.
@@ -77,6 +43,8 @@ pub struct Server {
     // capabilities: NegotiatedCapabilities,
     /// Messages to show once initialized.
     init_messages: Vec<ShowMessageParams>,
+    cache_state: Option<cache::AppStateShared>,
+    root_path: PathBuf,
 }
 
 // #[derive(Debug, Default)]
@@ -157,6 +125,8 @@ impl Server {
             // Will be set during initialization.
             // capabilities: NegotiatedCapabilities::default(),
             init_messages,
+            cache_state: None,
+            root_path: PathBuf::new(),
         }
     }
 
@@ -168,6 +138,25 @@ impl Server {
             Ok(json_params) => tracing::info!(params = %json_params, "Initialize with"),
             Err(_) => tracing::debug!(raw_params = ?params, "Raw initialize with"),
         };
+
+        self.root_path = match params
+            .workspace_folders
+            .as_ref()
+            .into_iter()
+            .flatten()
+            .next()
+            // .and_then(|ws| Some(PathBuf::from(ws.uri.to_string())))
+            // .and_then(|ws| Some(PathBuf::from(ws.uri.path().to_string())))
+            .and_then(|ws| ws.uri.to_file_path())
+        {
+            Some(path) => PathBuf::from(path),
+            None => PathBuf::from("."), // Updated to provide a default path
+        };
+
+        tracing::info!("root_path: {:?}", self.root_path.display());
+
+        self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
+
         ready(Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 position_encoding: Some(PositionEncodingKind::UTF16),
@@ -203,7 +192,7 @@ impl Server {
         // let (server_caps, final_caps) = negotiate_capabilities(&params);
         // self.capabilities = final_caps;
 
-        // // TODO: Multi-workspace support.
+        // TODO: Multi-workspace support.
         // let root_path = match params
         //     .workspace_folders
         //     .as_ref()
@@ -314,7 +303,43 @@ impl Server {
         params: lsp_ext::DidOpenTextDocumentCustomParams,
     ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
         tracing::info!("req::DidOpenTextDocumentCustom with params: {:?}", params);
+
+        // let rev = params.rev.clone();
+        // let path = PathBuf::from(params.text_document.uri);
+        // let path = Path::new(&params.text_document.uri);
+        let relative_stripped_path = Path::new(&params.text_document.uri)
+            .strip_prefix(&self.root_path)
+            .map_err(|e| {
+                tracing::error!("Failed to strip prefix: {}", e);
+                ResponseError::new(ErrorCode::INTERNAL_ERROR, format!("Failed to strip prefix: {}", e))
+            })
+            .unwrap();
+
+        // let _ = self
+        //     .cache_state
+        //     .as_ref()
+        //     .unwrap()
+        //     .populate_history(&params.rev, &relative_stripped_path);
+
+        // Handle the Result returned by populate_history
+        if let Err(err) = self
+            .cache_state
+            .as_ref()
+            .unwrap()
+            .populate_history(&params.rev, &relative_stripped_path)
+        {
+            tracing::error!("Failed to populate history: {}", err);
+            return ready(Err(ResponseError::new(
+                ErrorCode::INTERNAL_ERROR,
+                format!("Failed to populate history: {}", err),
+            )));
+        }
         let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
+
+        self.cache_state
+            .as_ref()
+            .unwrap()
+            .iterate_path_versions(&relative_stripped_path);
 
         ready(Ok(Some(response)))
     }
