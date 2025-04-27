@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 
 use anyhow::{Context, Result};
@@ -84,7 +84,7 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
 
 /// A *strongly-typed* git commit object id (20 raw bytes).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct CommitId([u8; 20]);
+pub struct CommitId([u8; 20]);
 
 impl CommitId {
     /// Create a `CommitId` from the usual 40-character hexadecimal SHA-1 string.
@@ -118,6 +118,11 @@ impl CommitId {
     }
 }
 
+// ────────────────────────────────────────────────────────────────────────────────
+//  2. Two indices on top of those domain types
+// ────────────────────────────────────────────────────────────────────────────────
+//
+
 /// We store revspecs (“HEAD~1”, “v1.2.3”, …) exactly as typed by the user.
 /// If the set is small/repeated you *could* intern them.
 type RevSpec = String;
@@ -130,7 +135,7 @@ type FilePath = Arc<PathBuf>;
 
 /// What you actually want to know about a given file *version*.
 #[derive(Clone, Debug)]
-struct FileVersion {
+pub struct FileVersion {
     /// Full file contents at this revision.
     content: Arc<str>,
     /// First line of the commit message (“commit summary”).
@@ -139,15 +144,10 @@ struct FileVersion {
 
 /// A unique key for a `FileVersion`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct VersionKey {
+pub struct VersionKey {
     commit: CommitId,
     path: FilePath,
 }
-
-// ────────────────────────────────────────────────────────────────────────────────
-//  2. Two indices on top of those domain types
-// ────────────────────────────────────────────────────────────────────────────────
-//
 
 /// (commit, path) ➜ `FileVersion`
 type VersionStore = HashMap<VersionKey, FileVersion>;
@@ -157,6 +157,11 @@ type RevIndexPerPath = HashMap<RevSpec, CommitId>;
 
 /// Top-level:  path ➜ (revspec ➜ commit)
 type RevStore = HashMap<FilePath, RevIndexPerPath>;
+
+// Define the stores using Mutex/RwLock
+// Use RwLock if reads are much more frequent than writes
+type SharedVersionStore = Arc<RwLock<HashMap<VersionKey, FileVersion>>>;
+type SharedRevStore = Arc<RwLock<HashMap<FilePath, RevIndexPerPath>>>;
 
 // ────────────────────────────────────────────────────────────────────────────────
 //  3. Helper functions
@@ -239,6 +244,92 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
             println!("Revspec        : {revspec}");
             println!("Summary        : {}", version.summary);
             println!("Content Length : {}\n", version.content.len());
+        }
+    }
+}
+
+pub struct AppStateShared {
+    repo: Arc<Repository>, // Repository is Send+Sync, Arc is fine
+    versions: SharedVersionStore,
+    revs: SharedRevStore,
+}
+
+impl AppStateShared {
+    pub fn new(repo_path: &Path) -> Result<Self> {
+        let repo = Repository::open(repo_path)?;
+        Ok(AppStateShared {
+            repo: Arc::new(repo),
+            // Initialize empty HashMaps inside RwLock and Arc
+            versions: Arc::new(RwLock::new(HashMap::new())),
+            revs: Arc::new(RwLock::new(HashMap::new())),
+        })
+    }
+
+    // Method to populate - takes &self because mutation happens *inside* the locks
+    pub fn populate_history(&self, rev: &str, path: &Path) -> Result<()> {
+        let repo_handle = Arc::clone(&self.repo);
+        // Pass dereferenced repo handle to the function
+        let history = commits_touching_path(&*repo_handle, rev, path)?;
+
+        // Lock the stores for writing
+        // Use .write().unwrap() - unwrap panics if the lock is "poisoned"
+        // (i.e., a thread panicked while holding the lock).
+        // Consider using .write().map_err(...) for better error handling.
+        let mut versions_guard = self.versions.write().expect("Version store lock poisoned");
+        let mut revs_guard = self.revs.write().expect("Rev store lock poisoned");
+
+        let mut index = 1;
+        for (summary_str, oid, maybe_content) in history {
+            let commit = CommitId::from_hex(&oid.to_string()).map_err(anyhow::Error::msg)?;
+            let revspec = format!("HEAD~{index}");
+            let content_arc = maybe_content.unwrap_or_else(|| Arc::<str>::from(""));
+            let summary_arc = Arc::<str>::from(summary_str);
+
+            // Pass mutable references obtained from the lock guards
+            put_version(
+                &mut *versions_guard, // Dereference the guard
+                &mut *revs_guard,     // Dereference the guard
+                path.to_path_buf(),
+                commit,
+                revspec,
+                content_arc,
+                summary_arc,
+            );
+            index += 1;
+        }
+        // Locks are automatically released when versions_guard and revs_guard go out of scope
+        Ok(())
+    }
+
+    // Method to lookup - takes &self, uses read locks
+    pub fn lookup_version(&self, path: &Path, revspec: &str) -> Option<(CommitId, FileVersion)> {
+        // Acquire read locks - multiple readers can coexist
+        let versions_guard = self.versions.read().expect("Version store lock poisoned");
+        let revs_guard = self.revs.read().expect("Rev store lock poisoned");
+
+        // Call the standalone lookup function with immutable references from guards
+        // We need to clone the FileVersion because the reference (&'a FileVersion)
+        // returned by lookup is tied to the lifetime of the lock guard.
+        // Returning the owned FileVersion avoids lifetime issues.
+        lookup(&*versions_guard, &*revs_guard, path, revspec)
+            .map(|(commit_id, file_version_ref)| (commit_id, file_version_ref.clone())) // Clone FileVersion
+    }
+
+    // Method to iterate - takes &self, uses read locks
+    pub fn iterate_path_versions(&self, path: &Path) {
+        let versions_guard = self.versions.read().expect("Version store lock poisoned");
+        let revs_guard = self.revs.read().expect("Rev store lock poisoned");
+        // Note: iterate_lookup prints directly, so it doesn't return references
+        // tied to the lock guard's lifetime, which is fine here.
+        iterate_lookup(&*versions_guard, &*revs_guard, path);
+    }
+
+    // Method to clone the state for sharing (cheap Arc clones)
+    pub fn clone_state(&self) -> Self {
+        AppStateShared {
+            repo: Arc::clone(&self.repo),
+            versions: Arc::clone(&self.versions),
+            revs: Arc::clone(&self.revs),
         }
     }
 }
