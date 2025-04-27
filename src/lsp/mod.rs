@@ -1,3 +1,4 @@
+mod cache;
 pub(crate) mod custom;
 mod lsp_ext;
 mod meter;

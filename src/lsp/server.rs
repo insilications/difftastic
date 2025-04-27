@@ -9,11 +9,8 @@
 // use std::collections::HashMap;
 // use std::io::{ErrorKind, Read};
 use std::{
-    collections::HashMap,
     future::{Future, ready},
     ops::ControlFlow,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex, RwLock},
 };
 
 use anyhow::Result;
@@ -28,6 +25,7 @@ use lsp_types::{
     request::{self as req},
 };
 
+use crate::lsp::cache;
 // use std::panic::UnwindSafe;
 // use std::path::Path;
 // use std::pin::pin;
