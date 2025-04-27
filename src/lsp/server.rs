@@ -1,27 +1,33 @@
 // use crate::capabilities::{NegotiatedCapabilities, negotiate_capabilities};
 // use crate::config::{CONFIG_KEY, Config};
 // use crate::{MAX_FILE_LEN, UrlExt, Vfs, convert, handler, lsp_ext};
-use anyhow::Result;
-use async_lsp::router::Router;
-use async_lsp::{ClientSocket, ResponseError};
-// use ide::{Analysis, AnalysisHost, Cancelled, FlakeInfo, VfsPath};
-// use lsp_types::notification::Notification;
-use lsp_types::request::{self as req};
-use lsp_types::{
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidSaveTextDocumentParams,
-    InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind, SaveOptions, ServerCapabilities,
-    ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, notification as notif,
-};
 // use nix_interop::nixos_options::{self, NixosOptions};
 // use nix_interop::{FLAKE_FILE, FLAKE_LOCK_FILE, FlakeUrl, flake_lock, flake_output};
 // use std::backtrace::Backtrace;
 // use std::borrow::BorrowMut;
 // use std::cell::Cell;
 // use std::collections::HashMap;
-use std::future::{Future, ready};
 // use std::io::{ErrorKind, Read};
-use std::ops::ControlFlow;
+use std::{
+    collections::HashMap,
+    future::{Future, ready},
+    ops::ControlFlow,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, RwLock},
+};
+
+use anyhow::Result;
+use async_lsp::{ClientSocket, ResponseError, router::Router};
+// use ide::{Analysis, AnalysisHost, Cancelled, FlakeInfo, VfsPath};
+// use lsp_types::notification::Notification;
+use lsp_types::{
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidSaveTextDocumentParams,
+    InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind, SaveOptions, ServerCapabilities,
+    ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, notification as notif,
+    request::{self as req},
+};
+
 // use std::panic::UnwindSafe;
 // use std::path::Path;
 // use std::pin::pin;
@@ -31,7 +37,6 @@ use std::ops::ControlFlow;
 // use tokio::sync::watch;
 // use tokio::task;
 // use tokio::task::JoinHandle;
-
 use crate::lsp::lsp_ext;
 
 const LSP_SERVER_NAME: &str = "difftastic-lsp";

@@ -24,6 +24,7 @@ pub enum DidOpenTextDocumentCustom {}
 impl Request for DidOpenTextDocumentCustom {
     type Params = DidOpenTextDocumentCustomParams;
     type Result = Option<DiffRangesResponse>;
+
     const METHOD: &'static str = "textDocument/didOpenCustom";
 }
 
