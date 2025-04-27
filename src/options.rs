@@ -556,6 +556,7 @@ fn build_display_path(lhs_path: &FileArgument, rhs_path: &FileArgument) -> Strin
     match (lhs_path, rhs_path) {
         (FileArgument::NamedPath(lhs), FileArgument::NamedPath(rhs)) => {
             if is_git_tmpfile(lhs) {
+                println!("build_display_path - display_path: {:?}", rhs.display());
                 return rhs.display().to_string();
             }
 
