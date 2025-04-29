@@ -107,8 +107,6 @@ impl<'f> From<&'f DiffResult> for File<'f> {
                     let (start_i, end_i) = matched_lines_indexes_for_hunk(matched_lines, hunk, 0);
                     let aligned_lines = &matched_lines[start_i..end_i];
                     matched_lines = &matched_lines[start_i..];
-                    // Efficiently advance the slice view for the next iteration
-                    // matched_lines = &matched_lines[end_i..]; // Corrected: Use end_i to avoid reprocessing
 
                     for (_, rhs_line_num) in aligned_lines {
                         if !rhs_lines_with_novel.contains(&rhs_line_num.unwrap_or(LineNumber(0))) {
