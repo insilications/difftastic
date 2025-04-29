@@ -11,33 +11,24 @@ use ignore::WalkBuilder;
 
 use crate::{exit_codes::EXIT_BAD_ARGUMENTS, hash::DftHashSet, options::FileArgument};
 
+#[inline]
 pub(crate) fn read_file_lsp(path: &Path) -> Result<Vec<u8>, ResponseError> {
-    match fs::read(path) {
-        Ok(src) => Ok(src),
-        Err(e) => match e.kind() {
-            std::io::ErrorKind::NotFound => {
-                tracing::error!("No such file: {}", path.display());
-                Err(ResponseError::new(
-                    ErrorCode::INTERNAL_ERROR,
-                    format!("No such file: {}", path.display()),
-                ))
-            }
-            std::io::ErrorKind::PermissionDenied => {
-                tracing::error!("Permission denied for file: {}", path.display());
-                Err(ResponseError::new(
-                    ErrorCode::INTERNAL_ERROR,
-                    format!("Permission denied for file: {}", path.display()),
-                ))
-            }
-            _ => {
-                tracing::error!("Could not read file: {} (error {:?})", path.display(), e.kind());
-                Err(ResponseError::new(
-                    ErrorCode::INTERNAL_ERROR,
-                    format!("Could not read file: {} (error {:?})", path.display(), e.kind()),
-                ))
-            }
-        },
-    }
+    std::fs::read(path).map_err(|err| {
+        use std::io::ErrorKind;
+
+        let path_disp = path.display();
+
+        let (human_msg, code) = match err.kind() {
+            ErrorKind::NotFound => ("No such file", ErrorCode::INTERNAL_ERROR),
+            ErrorKind::PermissionDenied => ("Permission denied", ErrorCode::INTERNAL_ERROR),
+            _ => ("Could not read file", ErrorCode::INTERNAL_ERROR),
+        };
+
+        tracing::error!("{human_msg}: {path_disp} (error kind = {:?})", err.kind());
+
+        // Human-readable string that goes over the JSON-RPC boundary.
+        ResponseError::new(code, format!("{human_msg}: {path_disp}"))
+    })
 }
 
 pub(crate) fn read_file_or_die(path: &FileArgument) -> Vec<u8> {

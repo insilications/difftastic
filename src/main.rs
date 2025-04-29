@@ -62,7 +62,8 @@ use crate::{
     },
     exit_codes::{EXIT_BAD_ARGUMENTS, EXIT_FOUND_CHANGES, EXIT_SUCCESS},
     files::{
-        ProbableFileKind, guess_content, read_file_or_die, read_files_or_die, read_or_die, relative_paths_in_either,
+        ProbableFileKind, guess_content, read_file_lsp, read_file_or_die, read_files_or_die, read_or_die,
+        relative_paths_in_either,
     },
     parse::{
         guess_language::{LANGUAGE_MAP_FROM_LSP, Language, LanguageOverride, guess, language_globs, language_name},
@@ -1170,13 +1171,15 @@ fn diff_lsp_content(
 }
 
 pub(crate) fn diff_for_lsp(
-    rhs_path: &FileArgument,
+    // rhs_path: &FileArgument,
+    rhs_path: &Path,
     lhs_src: &str,
     language_id: &str,
     // display_options: &DisplayOptions,
     // diff_options: &DiffOptions,
 ) -> DiffResult {
-    let rhs_bytes = read_file_or_die(rhs_path);
+    let rhs_bytes = read_file_lsp(rhs_path);
+    // let rhs_bytes = read_file_or_die(rhs_path);
     let mut rhs_src = match guess_content(&rhs_bytes) {
         ProbableFileKind::Text(src) => src,
         ProbableFileKind::Binary => {
@@ -1193,17 +1196,18 @@ pub(crate) fn diff_for_lsp(
     rhs_src.retain(|c| c != '\r');
     // }
 
-    let display_path = match rhs_path {
-        FileArgument::NamedPath(path) => path.display().to_string(),
-        FileArgument::Stdin => {
-            tracing::error!("error: rhs_path == FileArgument::Stdin");
-            std::process::exit(3);
-        }
-        FileArgument::DevNull => {
-            tracing::error!("error: rhs_path == FileArgument::DevNull");
-            std::process::exit(4);
-        }
-    };
+    let display_path = rhs_path.display().to_string();
+    // let display_path = match rhs_path {
+    //     FileArgument::NamedPath(path) => path.display().to_string(),
+    //     FileArgument::Stdin => {
+    //         tracing::error!("error: rhs_path == FileArgument::Stdin");
+    //         std::process::exit(3);
+    //     }
+    //     FileArgument::DevNull => {
+    //         tracing::error!("error: rhs_path == FileArgument::DevNull");
+    //         std::process::exit(4);
+    //     }
+    // };
 
     // LANGUAGE_MAP_FROM_LSP
     // DEFAULT_DISPLAY_OPTIONS_LSP
