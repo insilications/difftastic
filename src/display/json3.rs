@@ -257,7 +257,12 @@ pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
 
 pub(crate) fn print(diff: &DiffResult) {
     let file = File::from(diff);
-    tracing::info!("{}", serde_json::to_string(&file).expect("failed to serialize file"))
+    let ranges = Vec::from(&file);
+    tracing::info!(
+        "{}",
+        serde_json::to_string(&ranges).expect("failed to serialize ranges")
+    )
+    // tracing::info!("{}", serde_json::to_string(&file).expect("failed to serialize file"))
 }
 
 fn add_changes_to_side<'s>(
