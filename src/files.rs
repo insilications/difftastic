@@ -6,9 +6,39 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use async_lsp::{ErrorCode, ResponseError};
 use ignore::WalkBuilder;
 
 use crate::{exit_codes::EXIT_BAD_ARGUMENTS, hash::DftHashSet, options::FileArgument};
+
+pub(crate) fn read_file_lsp(path: &Path) -> Result<Vec<u8>, ResponseError> {
+    match fs::read(path) {
+        Ok(src) => Ok(src),
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                tracing::error!("No such file: {}", path.display());
+                Err(ResponseError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("No such file: {}", path.display()),
+                ))
+            }
+            std::io::ErrorKind::PermissionDenied => {
+                tracing::error!("Permission denied for file: {}", path.display());
+                Err(ResponseError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Permission denied for file: {}", path.display()),
+                ))
+            }
+            _ => {
+                tracing::error!("Could not read file: {} (error {:?})", path.display(), e.kind());
+                Err(ResponseError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Could not read file: {} (error {:?})", path.display(), e.kind()),
+                ))
+            }
+        },
+    }
+}
 
 pub(crate) fn read_file_or_die(path: &FileArgument) -> Vec<u8> {
     match read_file_arg(path) {

@@ -377,7 +377,7 @@ impl Server {
             .cache_state
             .as_ref()
             .unwrap()
-            .lookup_version(&rhs_path_buf, &params.rev)
+            .lookup_version(&relative_stripped_path, &params.rev)
         {
             // Arc counts inside the cloned FileVersion will reflect sharing
             tracing::info!(
@@ -385,7 +385,7 @@ impl Server {
                 Arc::strong_count(&version.content), // Count on the cloned Arc
                 Arc::strong_count(&version.summary)  // Count on the cloned Arc
             );
-            tracing::info!("Path           : {}", rhs_path_buf.display());
+            tracing::info!("Path           : {}", relative_stripped_path.display());
             tracing::info!("Revspec        : {}", params.rev);
             tracing::info!("Commit         : {}", commit_id.short());
             tracing::info!("Summary        : {}", version.summary);
