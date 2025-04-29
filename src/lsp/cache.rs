@@ -229,9 +229,10 @@ fn lookup<'a>(
 
 /// Iterate through recorded revspecs in RevStore for a particular path
 fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
-    let path_tmp = Arc::new(path.to_path_buf());
+    // allocate only the PathBuf needed for the HashMap probe
+    let path_buf = path.to_path_buf();
 
-    let Some((path_canonical, per_path_index)) = revs.get_key_value(&path_tmp) else {
+    let Some((path_canonical, per_path_index)) = revs.get_key_value(&path_buf) else {
         tracing::error!("No information stored for path {:?}", path);
         return; // Nothing to do
     };
