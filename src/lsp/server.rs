@@ -303,7 +303,6 @@ impl Server {
     //     tracing::info!("Registered file watching for flake files");
     // }
 
-    // impl Future<Output = Result<InitializeResult, ResponseError>>
     fn on_did_open_custom(
         &mut self,
         params: lsp_ext::DidOpenTextDocumentCustomParams,
@@ -317,7 +316,10 @@ impl Server {
             .strip_prefix(&self.root_path)
             .map_err(|e| {
                 tracing::error!("Failed to strip prefix: {}", e);
-                ResponseError::new(ErrorCode::INTERNAL_ERROR, format!("Failed to strip prefix: {}", e))
+                return ready(Err(ResponseError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Failed to strip prefix: {}", e),
+                )));
             })
             .unwrap();
 
@@ -347,30 +349,7 @@ impl Server {
         //     .unwrap()
         //     .iterate_path_versions(&relative_stripped_path);
 
-        // let display_options = DisplayOptions {
-        //     background_color: BackgroundColor::Dark,
-        //     use_color: false,
-        //     display_mode: DisplayMode::Json3,
-        //     print_unchanged: true,
-        //     tab_width: 4,
-        //     terminal_width: 80,
-        //     num_context_lines: 0,
-        //     syntax_highlight: false,
-        //     sort_paths: false,
-        // };
-
-        // let diff_options = DiffOptions {
-        //     graph_limit: 9999999,
-        //     byte_limit: 1000000,
-        //     parse_error_limit: 10,
-        //     check_only: false,
-        //     ignore_comments: false,
-        //     strip_cr: true,
-        // };
-
-        // let rhs_path_buf = PathBuf::from(&params.text_document.uri);
         let rhs_path_buf = PathBuf::from(&relative_stripped_path);
-        let rhs_path_file_argument = FileArgument::NamedPath(rhs_path_buf.clone());
 
         // Note: lookup_version now returns an owned FileVersion due to cloning
         if let Some((commit_id, version)) = self
@@ -391,22 +370,27 @@ impl Server {
             tracing::info!("Summary        : {}", version.summary);
             tracing::info!("Content Length : {}", version.content.len());
 
-            // let diff_result = diff_for_lsp(
-            //     &rhs_path_file_argument,
-            //     &version.content,
-            //     &display_options,
-            //     &diff_options,
-            // );
-            let diff_result = diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id);
-            if diff_result.has_reportable_change() {
-                json3::print(&diff_result);
-                // match display_options.display_mode {
-                //     DisplayMode::Inline | DisplayMode::SideBySide | DisplayMode::SideBySideShowBoth => {}
-                //     DisplayMode::Json => (),
-                //     DisplayMode::Json2 => (),
-                //     DisplayMode::Json3 => json3::print(&diff_result),
-                // }
+            match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
+                Ok(diff_result) => {
+                    if diff_result.has_reportable_change() {
+                        json3::print(&diff_result);
+                        // match display_options.display_mode {
+                        //     DisplayMode::Inline | DisplayMode::SideBySide | DisplayMode::SideBySideShowBoth => {}
+                        //     DisplayMode::Json => (),
+                        //     DisplayMode::Json2 => (),
+                        //     DisplayMode::Json3 => json3::print(&diff_result),
+                        // }
+                    }
+                }
+                Err(err) => {
+                    return ready(Err(err));
+                }
             }
+
+            // let diff_result = diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id)?;
+            // if diff_result.has_reportable_change() {
+            //     json3::print(&diff_result);
+            // }
         } else {
             tracing::info!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
         }

@@ -11,6 +11,21 @@ use ignore::WalkBuilder;
 
 use crate::{exit_codes::EXIT_BAD_ARGUMENTS, hash::DftHashSet, options::FileArgument};
 
+/// Reads the entire content of a file specified by `path`.
+/// This function is designed for use within the LSP server context.
+///
+/// * On success the file is returned as a `Vec<u8>`.
+/// * On failure the function converts the underlying `std::io::Error` into an LSP–compatible `ResponseError`.
+///
+/// # Arguments
+///
+/// * `path` - A reference to the `Path` of the file to be read.
+///
+/// # Returns
+///
+/// * `Ok(Vec<u8>)` - If the file is read successfully, containing the file's raw byte content.
+/// * `Err(ResponseError)` - If any I/O error occurs during reading. The `ResponseError` will contain
+///   `ErrorCode::INTERNAL_ERROR` and a message describing the issue (e.g., file not found, permission denied).
 #[inline]
 pub(crate) fn read_file_lsp(path: &Path) -> Result<Vec<u8>, ResponseError> {
     std::fs::read(path).map_err(|err| {

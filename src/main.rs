@@ -48,6 +48,7 @@ mod words;
 #[macro_use]
 extern crate log;
 
+use async_lsp::{ErrorCode, ResponseError};
 use display::style::print_warning;
 use log::info;
 use mimalloc::MiMalloc;
@@ -1170,62 +1171,31 @@ fn diff_lsp_content(
     }
 }
 
-pub(crate) fn diff_for_lsp(
-    // rhs_path: &FileArgument,
-    rhs_path: &Path,
-    lhs_src: &str,
-    language_id: &str,
-    // display_options: &DisplayOptions,
-    // diff_options: &DiffOptions,
-) -> DiffResult {
-    let rhs_bytes = read_file_lsp(rhs_path);
-    // let rhs_bytes = read_file_or_die(rhs_path);
-    let mut rhs_src = match guess_content(&rhs_bytes) {
-        ProbableFileKind::Text(src) => src,
-        ProbableFileKind::Binary => {
-            tracing::error!("error: rhs_src == ProbableFileKind::Binary");
-            std::process::exit(EXIT_BAD_ARGUMENTS);
-        }
-    };
-
-    if !rhs_src.is_empty() && !rhs_src.ends_with('\n') {
-        rhs_src.push('\n');
-    };
-
-    // if diff_options.strip_cr {
-    rhs_src.retain(|c| c != '\r');
-    // }
-
+pub(crate) fn diff_for_lsp(rhs_path: &Path, lhs_src: &str, language_id: &str) -> Result<DiffResult, ResponseError> {
     let display_path = rhs_path.display().to_string();
-    // let display_path = match rhs_path {
-    //     FileArgument::NamedPath(path) => path.display().to_string(),
-    //     FileArgument::Stdin => {
-    //         tracing::error!("error: rhs_path == FileArgument::Stdin");
-    //         std::process::exit(3);
-    //     }
-    //     FileArgument::DevNull => {
-    //         tracing::error!("error: rhs_path == FileArgument::DevNull");
-    //         std::process::exit(4);
-    //     }
-    // };
+    match read_file_lsp(rhs_path) {
+        Ok(rhs_bytes) => {
+            let mut rhs_src = match guess_content(&rhs_bytes) {
+                ProbableFileKind::Text(src) => src,
+                ProbableFileKind::Binary => {
+                    tracing::error!("rhs_src == ProbableFileKind::Binary for {display_path}");
+                    return Err(ResponseError::new(
+                        ErrorCode::INTERNAL_ERROR,
+                        format!("rhs_src == ProbableFileKind::Binary for {display_path}"),
+                    ));
+                }
+            };
 
-    // LANGUAGE_MAP_FROM_LSP
-    // DEFAULT_DISPLAY_OPTIONS_LSP
-    // DEFAULT_DIFF_OPTIONS_LSP
+            if !rhs_src.is_empty() && !rhs_src.ends_with('\n') {
+                rhs_src.push('\n');
+            };
 
-    diff_lsp_content(&display_path, None, &lhs_src, &rhs_src, &language_id)
+            rhs_src.retain(|c| c != '\r');
 
-    // diff_file_content(
-    //     &display_path,
-    //     None,
-    //     &rhs_path,
-    //     &rhs_path,
-    //     &lhs_src,
-    //     &rhs_src,
-    //     &display_options,
-    //     &diff_options,
-    //     &vec![],
-    // )
+            Ok(diff_lsp_content(&display_path, None, &lhs_src, &rhs_src, &language_id))
+        }
+        Err(err) => Err(err),
+    }
 }
 
 #[cfg(test)]
