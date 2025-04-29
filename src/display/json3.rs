@@ -4,6 +4,7 @@ use std::{
 };
 
 use line_numbers::LineNumber;
+use lsp_types::{Position, Range};
 use serde::{Serialize, Serializer, ser::SerializeStruct};
 
 use crate::{
@@ -167,6 +168,25 @@ impl Serialize for File<'_> {
         file.serialize_field("status", &self.status)?;
 
         file.end()
+    }
+}
+
+impl<'f> From<&'f File<'_>> for Vec<Range> {
+    fn from(file: &'f File<'_>) -> Self {
+        file.chunks
+            .iter()
+            .flat_map(|chunk| {
+                chunk.iter().flat_map(|line| {
+                    line.rhs.as_ref().map(|side| {
+                        side.changes.iter().map(|change| Range {
+                            start: Position::new(side.line_number, change.start),
+                            end: Position::new(side.line_number, change.end),
+                        })
+                    })
+                })
+            })
+            .flatten()
+            .collect()
     }
 }
 
