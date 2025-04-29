@@ -400,7 +400,8 @@ fn main() {
                             }
                             DisplayMode::Json => display::json::print(&diff_result),
                             DisplayMode::Json2 => display::json2::print(&diff_result),
-                            DisplayMode::Json3 => display::json3::print(&diff_result),
+                            DisplayMode::Json3 => unreachable!(),
+                            // DisplayMode::Json3 => display::json3::print(&diff_result),
                         }
                     }
                 }

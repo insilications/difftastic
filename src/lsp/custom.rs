@@ -9,11 +9,10 @@
 // mod vfs;
 
 use anyhow::{Context, Result};
-use async_lsp::client_monitor::ClientProcessMonitorLayer;
-use async_lsp::concurrency::ConcurrencyLayer;
-use async_lsp::panic::CatchUnwindLayer;
-use async_lsp::server::LifecycleLayer;
-use async_lsp::tracing::TracingLayer;
+use async_lsp::{
+    client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer, panic::CatchUnwindLayer,
+    server::LifecycleLayer, tracing::TracingLayer,
+};
 // use ide::VfsPath;
 // use lsp_types::Url;
 use lsp_types::ShowMessageParams;

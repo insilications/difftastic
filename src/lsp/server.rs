@@ -341,7 +341,7 @@ impl Server {
                 format!("Failed to populate history: {}", err),
             )));
         }
-        let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
+        // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
 
         // self.cache_state
         //     .as_ref()
@@ -372,7 +372,22 @@ impl Server {
             match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
                 Ok(diff_result) => {
                     if diff_result.has_reportable_change() {
-                        json3::print(&diff_result);
+                        match json3::print(&diff_result) {
+                            Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
+                            Err(err) => {
+                                tracing::error!("Failed to serialize diff result: {}", err);
+                                return ready(Err(ResponseError::new(
+                                    ErrorCode::INTERNAL_ERROR,
+                                    format!("Failed to serialize diff result: {}", err),
+                                )));
+                            }
+                        }
+                        // ready(Ok(Some(lsp_ext::DiffRangesResponse {
+                        //     ranges: json3::print(&diff_result),
+                        // })))
+                    } else {
+                        tracing::info!("No changes detected for path {}", rhs_path_buf.display());
+                        ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
                     }
                 }
                 Err(err) => {
@@ -381,8 +396,12 @@ impl Server {
             }
         } else {
             tracing::info!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
+            return ready(Err(ResponseError::new(
+                ErrorCode::INTERNAL_ERROR,
+                format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
+            )));
         }
-        ready(Ok(Some(response)))
+        // ready(Ok(Some(response)))
     }
 
     // fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {

@@ -3,6 +3,7 @@ use std::{
     hash::Hash,
 };
 
+use anyhow::{Context, Result};
 use line_numbers::LineNumber;
 use lsp_types::{Position, Range};
 use serde::{Serialize, Serializer, ser::SerializeStruct};
@@ -255,13 +256,17 @@ pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
     tracing::info!("{}", serde_json::to_string(&files).expect("failed to serialize files"));
 }
 
-pub(crate) fn print(diff: &DiffResult) {
+// pub(crate) fn print(diff: &DiffResult) -> Result<String, serde_json::Error> {
+pub(crate) fn print(diff: &DiffResult) -> Result<Vec<Range>> {
     let file = File::from(diff);
-    let ranges = Vec::from(&file);
-    tracing::info!(
-        "{}",
-        serde_json::to_string(&ranges).expect("failed to serialize ranges")
-    )
+    Ok(Vec::from(&file))
+    // let ranges = Vec::from(&file);
+    // serde_json::to_string(&ranges)
+
+    // tracing::info!(
+    // "{}",
+    // serde_json::to_string(&ranges).expect("failed to serialize ranges")
+    // )
     // tracing::info!("{}", serde_json::to_string(&file).expect("failed to serialize file"))
 }
 
