@@ -8,10 +8,11 @@ use std::{
 use anyhow::Result;
 use async_lsp::{ClientSocket, ErrorCode, ResponseError, router::Router};
 use lsp_types::{
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidSaveTextDocumentParams,
-    InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind, SaveOptions, ServerCapabilities,
-    ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, notification as notif,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind,
+    SaveOptions, ServerCapabilities, ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities, notification as notif,
     request::{self as req},
 };
 
@@ -78,7 +79,7 @@ impl Server {
             .request::<lsp_ext::DidOpenTextDocumentCustom, _>(Self::on_did_open_custom)
             //// Notifications ////
             // .notification::<lsp_ext::DidOpenTextDocumentCustom>(Self::on_did_open_custom)
-            // .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
+            .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
             .notification::<notif::DidCloseTextDocument>(Self::on_did_close)
             .notification::<notif::DidChangeTextDocument>(Self::on_did_change)
             .notification::<notif::DidChangeConfiguration>(Self::on_did_change_configuration)
@@ -165,9 +166,16 @@ impl Server {
 
         ready(Ok(InitializeResult {
             capabilities: ServerCapabilities {
+                workspace: Some(WorkspaceServerCapabilities {
+                    workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+                        supported: Some(true),
+                        change_notifications: None,
+                    }),
+                    file_operations: None,
+                }),
                 position_encoding: Some(PositionEncodingKind::UTF16),
                 text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
-                    open_close: Some(false),
+                    open_close: Some(true),
                     change: Some(TextDocumentSyncKind::NONE),
                     will_save: None,
                     will_save_wait_until: None,
@@ -404,39 +412,43 @@ impl Server {
         // ready(Ok(Some(response)))
     }
 
-    // fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
-    //     tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);
-    //     // // Ignore the open event for unsupported files, thus all following interactions
-    //     // // will error due to unopened files.
-    //     // let len = params.text_document.text.len();
-    //     // if len > MAX_FILE_LEN {
-    //     //     self.client.show_message_ext(
-    //     //         MessageType::WARNING,
-    //     //         "Disable LSP functionalities for too large file ({len} > {MAX_FILE_LEN})",
-    //     //     );
-    //     //     return ControlFlow::Continue(());
-    //     // }
+    fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
+        // tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);
+        tracing::info!(
+            "notif::DidOpenTextDocument with params.text_document.uri.to_file_path(): {:?}",
+            params.text_document.uri.to_file_path()
+        );
+        //     // // Ignore the open event for unsupported files, thus all following interactions
+        //     // // will error due to unopened files.
+        //     // let len = params.text_document.text.len();
+        //     // if len > MAX_FILE_LEN {
+        //     //     self.client.show_message_ext(
+        //     //         MessageType::WARNING,
+        //     //         "Disable LSP functionalities for too large file ({len} > {MAX_FILE_LEN})",
+        //     //     );
+        //     //     return ControlFlow::Continue(());
+        //     // }
 
-    //     // let uri = params.text_document.uri;
-    //     // self.opened_files.insert(uri.clone(), FileData::default());
-    //     // self.set_vfs_file_content(&uri, params.text_document.text);
+        //     // let uri = params.text_document.uri;
+        //     // self.opened_files.insert(uri.clone(), FileData::default());
+        //     // self.set_vfs_file_content(&uri, params.text_document.text);
 
-    //     // // We created a new flake.nix
-    //     // if !self.workspace_is_flake
-    //     //     && uri
-    //     //         .to_file_path()
-    //     //         .ok()
-    //     //         .as_ref()
-    //     //         .and_then(|path| path.file_name())
-    //     //         .is_some_and(|name| name == FLAKE_FILE)
-    //     // {
-    //     //     self.spawn_load_flake_workspace();
-    //     // }
+        //     // // We created a new flake.nix
+        //     // if !self.workspace_is_flake
+        //     //     && uri
+        //     //         .to_file_path()
+        //     //         .ok()
+        //     //         .as_ref()
+        //     //         .and_then(|path| path.file_name())
+        //     //         .is_some_and(|name| name == FLAKE_FILE)
+        //     // {
+        //     //     self.spawn_load_flake_workspace();
+        //     // }
 
-    //     // self.spawn_update_diagnostics();
+        //     // self.spawn_update_diagnostics();
 
-    //     ControlFlow::Continue(())
-    // }
+        ControlFlow::Continue(())
+    }
 
     fn on_did_close(&mut self, _params: DidCloseTextDocumentParams) -> NotifyResult {
         tracing::info!("notif::DidCloseTextDocument");
