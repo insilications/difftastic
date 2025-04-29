@@ -316,10 +316,9 @@ impl Server {
             .strip_prefix(&self.root_path)
             .map_err(|e| {
                 tracing::error!("Failed to strip prefix: {}", e);
-                return ready(Err(ResponseError::new(
-                    ErrorCode::INTERNAL_ERROR,
-                    format!("Failed to strip prefix: {}", e),
-                )));
+                ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
+                    ResponseError::new(ErrorCode::INTERNAL_ERROR, format!("Failed to strip prefix: {}", e)),
+                ))
             })
             .unwrap();
 
@@ -374,23 +373,12 @@ impl Server {
                 Ok(diff_result) => {
                     if diff_result.has_reportable_change() {
                         json3::print(&diff_result);
-                        // match display_options.display_mode {
-                        //     DisplayMode::Inline | DisplayMode::SideBySide | DisplayMode::SideBySideShowBoth => {}
-                        //     DisplayMode::Json => (),
-                        //     DisplayMode::Json2 => (),
-                        //     DisplayMode::Json3 => json3::print(&diff_result),
-                        // }
                     }
                 }
                 Err(err) => {
                     return ready(Err(err));
                 }
             }
-
-            // let diff_result = diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id)?;
-            // if diff_result.has_reportable_change() {
-            //     json3::print(&diff_result);
-            // }
         } else {
             tracing::info!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
         }
