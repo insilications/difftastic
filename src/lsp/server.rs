@@ -397,7 +397,11 @@ impl Server {
             //     &display_options,
             //     &diff_options,
             // );
-            let diff_result = diff_for_lsp(&rhs_path_file_argument, &version.content);
+            let diff_result = diff_for_lsp(
+                &rhs_path_file_argument,
+                &version.content,
+                &params.text_document.language_id,
+            );
             if diff_result.has_reportable_change() {
                 json3::print(&diff_result);
                 // match display_options.display_mode {

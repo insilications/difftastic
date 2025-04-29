@@ -967,6 +967,7 @@ fn diff_lsp_content(
     // rhs_path: &FileArgument,
     lhs_src: &str,
     rhs_src: &str,
+    language_id: &str,
     // display_options: &DisplayOptions,
     // diff_options: &DiffOptions,
     // overrides: &[(LanguageOverride, Vec<glob::Pattern>)],
@@ -981,7 +982,7 @@ fn diff_lsp_content(
     // println!("diff_file_content - diff_options: {:?}", diff_options);
 
     // let language = guess(Path::new(display_path), guess_src, overrides);
-    let language = LANGUAGE_MAP_FROM_LSP.get(&display_path).copied();
+    let language = LANGUAGE_MAP_FROM_LSP.get(&language_id).copied();
     let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
 
     if lhs_src == rhs_src {
@@ -1171,6 +1172,7 @@ fn diff_lsp_content(
 pub(crate) fn diff_for_lsp(
     rhs_path: &FileArgument,
     lhs_src: &str,
+    language_id: &str,
     // display_options: &DisplayOptions,
     // diff_options: &DiffOptions,
 ) -> DiffResult {
@@ -1207,7 +1209,7 @@ pub(crate) fn diff_for_lsp(
     // DEFAULT_DISPLAY_OPTIONS_LSP
     // DEFAULT_DIFF_OPTIONS_LSP
 
-    diff_lsp_content(&display_path, None, &lhs_src, &rhs_src)
+    diff_lsp_content(&display_path, None, &lhs_src, &rhs_src, &language_id)
 
     // diff_file_content(
     //     &display_path,
