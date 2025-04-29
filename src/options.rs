@@ -557,7 +557,7 @@ fn build_display_path(lhs_path: &FileArgument, rhs_path: &FileArgument) -> Strin
     match (lhs_path, rhs_path) {
         (FileArgument::NamedPath(lhs), FileArgument::NamedPath(rhs)) => {
             if is_git_tmpfile(lhs) {
-                println!("build_display_path - display_path: {:?}", rhs.display());
+                // println!("build_display_path - display_path: {:?}", rhs.display());
                 return rhs.display().to_string();
             }
 
@@ -796,7 +796,7 @@ pub(crate) fn parse_args() -> Mode {
             let lhs_arg = FileArgument::from_cli_argument(lhs_path);
             let rhs_arg = FileArgument::from_cli_argument(rhs_path);
             let display_path = build_display_path(&lhs_arg, &rhs_arg);
-            println!("parse_args - display_path: {:?}", display_path);
+            // println!("parse_args - display_path: {:?}", display_path);
 
             let lhs_permissions = lhs_arg.permissions();
             let rhs_permissions = rhs_arg.permissions();

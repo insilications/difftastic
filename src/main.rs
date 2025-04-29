@@ -577,9 +577,9 @@ fn diff_file_content(
         FileArgument::DevNull => &lhs_src,
         _ => &rhs_src,
     };
-    println!("diff_file_content - display_path: {:?}", display_path);
-    println!("diff_file_content - display_options: {:?}", display_options);
-    println!("diff_file_content - diff_options: {:?}", diff_options);
+    // println!("diff_file_content - display_path: {:?}", display_path);
+    // println!("diff_file_content - display_options: {:?}", display_options);
+    // println!("diff_file_content - diff_options: {:?}", diff_options);
 
     let language = guess(Path::new(display_path), guess_src, overrides);
     let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
@@ -940,6 +940,7 @@ fn print_diff_result(display_options: &DisplayOptions, summary: &DiffResult) {
 
 pub(crate) fn diff_for_lsp(
     rhs_path: &FileArgument,
+    lhs_src: &str,
     display_options: &DisplayOptions,
     diff_options: &DiffOptions,
 ) -> DiffResult {
@@ -975,12 +976,12 @@ pub(crate) fn diff_for_lsp(
     diff_file_content(
         &display_path,
         None,
-        rhs_path,
-        rhs_path,
+        &rhs_path,
+        &rhs_path,
+        &lhs_src,
         &rhs_src,
-        &rhs_src,
-        display_options,
-        diff_options,
+        &display_options,
+        &diff_options,
         &vec![],
     )
 }

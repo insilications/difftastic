@@ -92,7 +92,7 @@ impl CommitId {
     /// NOTE: This function does *no* full error recovery – it just bubbles
     ///       back a `String` with the problem description because the purpose
     ///       here is to keep the example dependency-free.
-    fn from_hex(hex: &str) -> Result<Self, String> {
+    pub fn from_hex(hex: &str) -> Result<Self, String> {
         if hex.len() != 40 {
             return Err(format!("expected 40 hex chars, got {}", hex.len()));
         }
@@ -108,7 +108,7 @@ impl CommitId {
 
     /// A traditional “short” (7-char) textual representation – handy for logs.
     #[allow(dead_code)]
-    fn short(&self) -> String {
+    pub fn short(&self) -> String {
         self.0
             .iter()
             .take(4) // 4 × 2 hex digits = 8 chars – slice after join.
@@ -134,12 +134,13 @@ type RevSpec = String;
 type FilePath = Arc<PathBuf>;
 
 /// What you actually want to know about a given file *version*.
-#[derive(Clone, Debug)]
+// Make sure FileVersion derives Clone if using the .map(|(...) (...).clone()) approach in lookup_version
+#[derive(Clone, Debug)] // Ensure FileVersion is Cloneable
 pub struct FileVersion {
     /// Full file contents at this revision.
-    content: Arc<str>,
+    pub content: Arc<str>,
     /// First line of the commit message (“commit summary”).
-    summary: Arc<str>,
+    pub summary: Arc<str>,
 }
 
 /// A unique key for a `FileVersion`.
@@ -338,7 +339,6 @@ impl AppStateShared {
     pub fn clone_state(&self) -> Self {
         AppStateShared {
             repo: Arc::clone(&self.repo),
-            // repo: self.repo.as_ref().map(Arc::clone),
             versions: Arc::clone(&self.versions),
             revs: Arc::clone(&self.revs),
         }

@@ -2,6 +2,7 @@ use std::{
     future::{Future, ready},
     ops::ControlFlow,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::Result;
@@ -341,10 +342,10 @@ impl Server {
         }
         let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
 
-        self.cache_state
-            .as_ref()
-            .unwrap()
-            .iterate_path_versions(&relative_stripped_path);
+        // self.cache_state
+        //     .as_ref()
+        //     .unwrap()
+        //     .iterate_path_versions(&relative_stripped_path);
 
         let display_options = DisplayOptions {
             background_color: BackgroundColor::Dark,
@@ -367,16 +368,46 @@ impl Server {
             strip_cr: true,
         };
 
-        let kk = FileArgument::NamedPath(PathBuf::from(&params.text_document.uri));
+        // let rhs_path_buf = PathBuf::from(&params.text_document.uri);
+        let rhs_path_buf = PathBuf::from(&relative_stripped_path);
+        let rhs_path_file_argument = FileArgument::NamedPath(rhs_path_buf.clone());
 
-        let diff_result = diff_for_lsp(&kk, &display_options, &diff_options);
-        if diff_result.has_reportable_change() {
-            match display_options.display_mode {
-                DisplayMode::Inline | DisplayMode::SideBySide | DisplayMode::SideBySideShowBoth => {}
-                DisplayMode::Json => (),
-                DisplayMode::Json2 => (),
-                DisplayMode::Json3 => json3::print(&diff_result),
+        // Note: lookup_version now returns an owned FileVersion due to cloning
+        if let Some((commit_id, version)) = self
+            .cache_state
+            .as_ref()
+            .unwrap()
+            .lookup_version(&rhs_path_buf, &params.rev)
+        {
+            // Arc counts inside the cloned FileVersion will reflect sharing
+            tracing::info!(
+                "Arc Counts : content: {} - summary: {}",
+                Arc::strong_count(&version.content), // Count on the cloned Arc
+                Arc::strong_count(&version.summary)  // Count on the cloned Arc
+            );
+            tracing::info!("Path           : {}", rhs_path_buf.display());
+            tracing::info!("Revspec        : {}", params.rev);
+            tracing::info!("Commit         : {}", commit_id.short());
+            tracing::info!("Summary        : {}", version.summary);
+            tracing::info!("Content Length : {}", version.content.len());
+
+            let diff_result = diff_for_lsp(
+                &rhs_path_file_argument,
+                &version.content,
+                &display_options,
+                &diff_options,
+            );
+            if diff_result.has_reportable_change() {
+                json3::print(&diff_result);
+                // match display_options.display_mode {
+                //     DisplayMode::Inline | DisplayMode::SideBySide | DisplayMode::SideBySideShowBoth => {}
+                //     DisplayMode::Json => (),
+                //     DisplayMode::Json2 => (),
+                //     DisplayMode::Json3 => json3::print(&diff_result),
+                // }
             }
+        } else {
+            tracing::info!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
         }
         ready(Ok(Some(response)))
     }
