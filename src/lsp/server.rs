@@ -347,26 +347,26 @@ impl Server {
         //     .unwrap()
         //     .iterate_path_versions(&relative_stripped_path);
 
-        let display_options = DisplayOptions {
-            background_color: BackgroundColor::Dark,
-            use_color: false,
-            display_mode: DisplayMode::Json3,
-            print_unchanged: true,
-            tab_width: 4,
-            terminal_width: 80,
-            num_context_lines: 0,
-            syntax_highlight: false,
-            sort_paths: false,
-        };
+        // let display_options = DisplayOptions {
+        //     background_color: BackgroundColor::Dark,
+        //     use_color: false,
+        //     display_mode: DisplayMode::Json3,
+        //     print_unchanged: true,
+        //     tab_width: 4,
+        //     terminal_width: 80,
+        //     num_context_lines: 0,
+        //     syntax_highlight: false,
+        //     sort_paths: false,
+        // };
 
-        let diff_options = DiffOptions {
-            graph_limit: 9999999,
-            byte_limit: 1000000,
-            parse_error_limit: 10,
-            check_only: false,
-            ignore_comments: false,
-            strip_cr: true,
-        };
+        // let diff_options = DiffOptions {
+        //     graph_limit: 9999999,
+        //     byte_limit: 1000000,
+        //     parse_error_limit: 10,
+        //     check_only: false,
+        //     ignore_comments: false,
+        //     strip_cr: true,
+        // };
 
         // let rhs_path_buf = PathBuf::from(&params.text_document.uri);
         let rhs_path_buf = PathBuf::from(&relative_stripped_path);
@@ -391,12 +391,13 @@ impl Server {
             tracing::info!("Summary        : {}", version.summary);
             tracing::info!("Content Length : {}", version.content.len());
 
-            let diff_result = diff_for_lsp(
-                &rhs_path_file_argument,
-                &version.content,
-                &display_options,
-                &diff_options,
-            );
+            // let diff_result = diff_for_lsp(
+            //     &rhs_path_file_argument,
+            //     &version.content,
+            //     &display_options,
+            //     &diff_options,
+            // );
+            let diff_result = diff_for_lsp(&rhs_path_file_argument, &version.content);
             if diff_result.has_reportable_change() {
                 json3::print(&diff_result);
                 // match display_options.display_mode {

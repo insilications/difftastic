@@ -65,7 +65,7 @@ use crate::{
         ProbableFileKind, guess_content, read_file_or_die, read_files_or_die, read_or_die, relative_paths_in_either,
     },
     parse::{
-        guess_language::{Language, LanguageOverride, guess, language_globs, language_name},
+        guess_language::{LANGUAGE_MAP_FROM_LSP, Language, LanguageOverride, guess, language_globs, language_name},
         syntax,
     },
 };
@@ -960,11 +960,219 @@ fn print_diff_result(display_options: &DisplayOptions, summary: &DiffResult) {
     }
 }
 
+fn diff_lsp_content(
+    display_path: &str,
+    extra_info: Option<String>,
+    // _lhs_path: &FileArgument,
+    // rhs_path: &FileArgument,
+    lhs_src: &str,
+    rhs_src: &str,
+    // display_options: &DisplayOptions,
+    // diff_options: &DiffOptions,
+    // overrides: &[(LanguageOverride, Vec<glob::Pattern>)],
+) -> DiffResult {
+    // let guess_src = match rhs_path {
+    //     FileArgument::DevNull => &lhs_src,
+    //     _ => &rhs_src,
+    // };
+
+    // println!("diff_file_content - display_path: {:?}", display_path);
+    // println!("diff_file_content - display_options: {:?}", display_options);
+    // println!("diff_file_content - diff_options: {:?}", diff_options);
+
+    // let language = guess(Path::new(display_path), guess_src, overrides);
+    let language = LANGUAGE_MAP_FROM_LSP.get(&display_path).copied();
+    let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
+
+    if lhs_src == rhs_src {
+        let file_format = match language {
+            Some(language) => FileFormat::SupportedLanguage(language),
+            None => FileFormat::PlainText,
+        };
+
+        // If the two files are byte-for-byte identical, return early
+        // rather than doing any more work.
+        return DiffResult {
+            extra_info,
+            display_path: display_path.to_owned(),
+            file_format,
+            lhs_src: FileContent::Text("".into()),
+            rhs_src: FileContent::Text("".into()),
+            lhs_positions: vec![],
+            rhs_positions: vec![],
+            hunks: vec![],
+            has_byte_changes: false,
+            has_syntactic_changes: false,
+        };
+    }
+
+    let (file_format, lhs_positions, rhs_positions) = match lang_config {
+        None => {
+            let file_format = FileFormat::PlainText;
+            if DEFAULT_DIFF_OPTIONS_LSP.check_only {
+                return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
+            }
+
+            let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
+            let rhs_positions = line_parser::change_positions(rhs_src, lhs_src);
+            (file_format, lhs_positions, rhs_positions)
+        }
+        Some((language, lang_config)) => {
+            let arena = Arena::new();
+            match tsp::to_tree_with_limit(&DEFAULT_DIFF_OPTIONS_LSP, &lang_config, lhs_src, rhs_src) {
+                Ok((lhs_tree, rhs_tree)) => {
+                    match tsp::to_syntax_with_limit(
+                        lhs_src,
+                        rhs_src,
+                        &lhs_tree,
+                        &rhs_tree,
+                        &arena,
+                        &lang_config,
+                        &DEFAULT_DIFF_OPTIONS_LSP,
+                    ) {
+                        Ok((lhs, rhs)) => {
+                            if DEFAULT_DIFF_OPTIONS_LSP.check_only {
+                                let has_syntactic_changes = lhs != rhs;
+                                return DiffResult {
+                                    extra_info,
+                                    display_path: display_path.to_owned(),
+                                    file_format: FileFormat::SupportedLanguage(language),
+                                    lhs_src: FileContent::Text(lhs_src.to_owned()),
+                                    rhs_src: FileContent::Text(rhs_src.to_owned()),
+                                    lhs_positions: vec![],
+                                    rhs_positions: vec![],
+                                    hunks: vec![],
+                                    has_byte_changes: true,
+                                    has_syntactic_changes,
+                                };
+                            }
+
+                            let mut change_map = ChangeMap::default();
+                            let possibly_changed = if env::var("DFT_DBG_KEEP_UNCHANGED").is_ok() {
+                                vec![(lhs.clone(), rhs.clone())]
+                            } else {
+                                unchanged::mark_unchanged(&lhs, &rhs, &mut change_map)
+                            };
+
+                            let mut exceeded_graph_limit = false;
+
+                            for (lhs_section_nodes, rhs_section_nodes) in possibly_changed {
+                                init_next_prev(&lhs_section_nodes);
+                                init_next_prev(&rhs_section_nodes);
+
+                                match mark_syntax(
+                                    lhs_section_nodes.first().copied(),
+                                    rhs_section_nodes.first().copied(),
+                                    &mut change_map,
+                                    DEFAULT_DIFF_OPTIONS_LSP.graph_limit,
+                                ) {
+                                    Ok(()) => {}
+                                    Err(ExceededGraphLimit {}) => {
+                                        exceeded_graph_limit = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if exceeded_graph_limit {
+                                let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
+                                let rhs_positions = line_parser::change_positions(rhs_src, lhs_src);
+                                (
+                                    FileFormat::TextFallback {
+                                        reason: "exceeded DFT_GRAPH_LIMIT".into(),
+                                    },
+                                    lhs_positions,
+                                    rhs_positions,
+                                )
+                            } else {
+                                fix_all_sliders(language, &lhs, &mut change_map);
+                                fix_all_sliders(language, &rhs, &mut change_map);
+
+                                let mut lhs_positions = syntax::change_positions(&lhs, &change_map);
+                                let mut rhs_positions = syntax::change_positions(&rhs, &change_map);
+
+                                if DEFAULT_DIFF_OPTIONS_LSP.ignore_comments {
+                                    let lhs_comments = tsp::comment_positions(&lhs_tree, lhs_src, &lang_config);
+                                    lhs_positions.extend(lhs_comments);
+
+                                    let rhs_comments = tsp::comment_positions(&rhs_tree, rhs_src, &lang_config);
+                                    rhs_positions.extend(rhs_comments);
+                                }
+
+                                (FileFormat::SupportedLanguage(language), lhs_positions, rhs_positions)
+                            }
+                        }
+                        Err(tsp::ExceededParseErrorLimit(error_count)) => {
+                            let file_format = FileFormat::TextFallback {
+                                reason: format!(
+                                    "{} {} parse error{}, exceeded DFT_PARSE_ERROR_LIMIT",
+                                    error_count,
+                                    language_name(language),
+                                    if error_count == 1 { "" } else { "s" }
+                                ),
+                            };
+
+                            if DEFAULT_DIFF_OPTIONS_LSP.check_only {
+                                return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
+                            }
+
+                            let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
+                            let rhs_positions = line_parser::change_positions(rhs_src, lhs_src);
+                            (file_format, lhs_positions, rhs_positions)
+                        }
+                    }
+                }
+                Err(tsp::ExceededByteLimit(num_bytes)) => {
+                    let format_options = FormatSizeOptions::from(BINARY).decimal_places(1);
+                    let file_format = FileFormat::TextFallback {
+                        reason: format!("{} exceeded DFT_BYTE_LIMIT", &format_size(num_bytes, format_options)),
+                    };
+
+                    if DEFAULT_DIFF_OPTIONS_LSP.check_only {
+                        return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
+                    }
+
+                    let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
+                    let rhs_positions = line_parser::change_positions(rhs_src, lhs_src);
+                    (file_format, lhs_positions, rhs_positions)
+                }
+            }
+        }
+    };
+
+    let opposite_to_lhs = opposite_positions(&lhs_positions);
+    let opposite_to_rhs = opposite_positions(&rhs_positions);
+
+    let hunks = matched_pos_to_hunks(&lhs_positions, &rhs_positions);
+    let hunks = merge_adjacent(
+        &hunks,
+        &opposite_to_lhs,
+        &opposite_to_rhs,
+        lhs_src.max_line(),
+        rhs_src.max_line(),
+        DEFAULT_DISPLAY_OPTIONS_LSP.num_context_lines as usize,
+    );
+    let has_syntactic_changes = !hunks.is_empty();
+
+    DiffResult {
+        extra_info,
+        display_path: display_path.to_owned(),
+        file_format,
+        lhs_src: FileContent::Text(lhs_src.to_owned()),
+        rhs_src: FileContent::Text(rhs_src.to_owned()),
+        lhs_positions,
+        rhs_positions,
+        hunks,
+        has_byte_changes: true,
+        has_syntactic_changes,
+    }
+}
+
 pub(crate) fn diff_for_lsp(
     rhs_path: &FileArgument,
     lhs_src: &str,
-    display_options: &DisplayOptions,
-    diff_options: &DiffOptions,
+    // display_options: &DisplayOptions,
+    // diff_options: &DiffOptions,
 ) -> DiffResult {
     let rhs_bytes = read_file_or_die(rhs_path);
     let mut rhs_src = match guess_content(&rhs_bytes) {
@@ -979,9 +1187,9 @@ pub(crate) fn diff_for_lsp(
         rhs_src.push('\n');
     };
 
-    if diff_options.strip_cr {
-        rhs_src.retain(|c| c != '\r');
-    }
+    // if diff_options.strip_cr {
+    rhs_src.retain(|c| c != '\r');
+    // }
 
     let display_path = match rhs_path {
         FileArgument::NamedPath(path) => path.display().to_string(),
@@ -999,17 +1207,19 @@ pub(crate) fn diff_for_lsp(
     // DEFAULT_DISPLAY_OPTIONS_LSP
     // DEFAULT_DIFF_OPTIONS_LSP
 
-    diff_file_content(
-        &display_path,
-        None,
-        &rhs_path,
-        &rhs_path,
-        &lhs_src,
-        &rhs_src,
-        &display_options,
-        &diff_options,
-        &vec![],
-    )
+    diff_lsp_content(&display_path, None, &lhs_src, &rhs_src)
+
+    // diff_file_content(
+    //     &display_path,
+    //     None,
+    //     &rhs_path,
+    //     &rhs_path,
+    //     &lhs_src,
+    //     &rhs_src,
+    //     &display_options,
+    //     &diff_options,
+    //     &vec![],
+    // )
 }
 
 #[cfg(test)]
