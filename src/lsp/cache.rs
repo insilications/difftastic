@@ -213,9 +213,9 @@ fn lookup<'a>(
 ) -> Option<(CommitId, &'a FileVersion)> {
     // 1) Which commit belongs to that (path, revspec)?
     // The rev-store tells us which *commit* corresponds to that revspec for that (canonical) path.
-    // For simplicity we create a temporary Arc<PathBuf> for lookup.
-    let path_tmp = Arc::new(path.to_path_buf());
-    let (path_canonical, per_path_index) = revs.get_key_value(&path_tmp)?;
+    // Only a PathBuf clone, no Arc allocation
+    let path_buf = path.to_path_buf(); // Path → owned PathBuf
+    let (path_canonical, per_path_index) = revs.get_key_value(&path_buf)?;
     let commit_id = *per_path_index.get(revspec)?;
 
     // 2) Primary store maps that (commit, path) to the payload.
