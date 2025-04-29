@@ -29,18 +29,23 @@
 			"path": "src/main.rs",
 			"bookmarks": [
 				{
-					"line": 356,
+					"line": 378,
 					"column": 46,
 					"label": ""
 				},
 				{
-					"line": 462,
+					"line": 484,
 					"column": 0,
 					"label": ""
 				},
 				{
-					"line": 564,
+					"line": 586,
 					"column": 11,
+					"label": ""
+				},
+				{
+					"line": 962,
+					"column": 16,
 					"label": ""
 				}
 			]

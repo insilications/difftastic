@@ -11,6 +11,7 @@
 use std::{borrow::Borrow, path::Path};
 
 use lazy_static::lazy_static;
+use phf::phf_map;
 use regex::Regex;
 use strum::{EnumIter, IntoEnumIterator};
 
@@ -236,8 +237,7 @@ pub(crate) fn language_globs(language: Language) -> Vec<glob::Pattern> {
         Apex => &["*.cls", "*.apexc", "*.trigger"],
         C => &["*.c"],
         Clojure => &[
-            "*.bb", "*.boot", "*.clj", "*.cljc", "*.clje", "*.cljs", "*.cljx", "*.edn", "*.joke",
-            "*.joker",
+            "*.bb", "*.boot", "*.clj", "*.cljc", "*.clje", "*.cljs", "*.cljx", "*.edn", "*.joke", "*.joker",
         ],
         CMake => &["*.cmake", "*.cmake.in", "CMakeLists.txt"],
         CommonLisp => &["*.lisp", "*.lsp", "*.asd"],
@@ -245,9 +245,7 @@ pub(crate) fn language_globs(language: Language) -> Vec<glob::Pattern> {
         // C++ is more widely used than C according to
         // https://madnight.github.io/githut/
         // Also, treating CUDA as C++
-        CPlusPlus => &[
-            "*.cc", "*.cpp", "*.h", "*.hh", "*.hpp", "*.ino", "*.cxx", "*.cu",
-        ],
+        CPlusPlus => &["*.cc", "*.cpp", "*.h", "*.hh", "*.hpp", "*.ino", "*.cxx", "*.cu"],
         CSharp => &["*.cs"],
         Css => &["*.css"],
         Dart => &["*.dart"],
@@ -342,21 +340,12 @@ pub(crate) fn language_globs(language: Language) -> Vec<glob::Pattern> {
         OCamlInterface => &["*.mli"],
         Pascal => &["*.pas", "*.dfm", "*.dpr", "*.lpr", "*.pascal"],
         Perl => &["*.pm", "*.pl"],
-        Php => &[
-            "*.php", "*.phtml", "*.php3", "*.php4", "*.php5", "*.php7", "*.phps",
-        ],
+        Php => &["*.php", "*.phtml", "*.php3", "*.php4", "*.php5", "*.php7", "*.phps"],
         Python => &["*.py", "*.py3", "*.pyi", "*.bzl", "TARGETS", "BUCK", "DEPS"],
         Qml => &["*.qml"],
         R => &["*.R", "*.r", "*.rd", "*.rsx", ".Rprofile", "expr-dist"],
         Racket => &["*.rkt"],
-        Ruby => &[
-            "*.rb",
-            "*.builder",
-            "*.spec",
-            "*.rake",
-            "Gemfile",
-            "Rakefile",
-        ],
+        Ruby => &["*.rb", "*.builder", "*.spec", "*.rake", "Gemfile", "Rakefile"],
         Rust => &["*.rs"],
         Scala => &["*.scala", "*.sbt", "*.sc"],
         Scheme => &["*.scm", "*.sch", "*.ss"],
@@ -407,9 +396,7 @@ pub(crate) fn language_globs(language: Language) -> Vec<glob::Pattern> {
 
     glob_strs
         .iter()
-        .map(|name| {
-            glob::Pattern::new(name).expect("Glob in difftastic source should be well-formed")
-        })
+        .map(|name| glob::Pattern::new(name).expect("Glob in difftastic source should be well-formed"))
         .collect()
 }
 
@@ -445,11 +432,7 @@ fn looks_like_xml(src: &str) -> bool {
     src.starts_with("<?xml")
 }
 
-pub(crate) fn guess(
-    path: &Path,
-    src: &str,
-    overrides: &[(LanguageOverride, Vec<glob::Pattern>)],
-) -> Option<Language> {
+pub(crate) fn guess(path: &Path, src: &str, overrides: &[(LanguageOverride, Vec<glob::Pattern>)]) -> Option<Language> {
     if let Some(file_name) = path.file_name() {
         let file_name = file_name.to_string_lossy();
         for (lang_override, patterns) in overrides {
@@ -574,9 +557,7 @@ fn from_shebang(src: &str) -> Option<Language> {
             let interpreter_path = Path::new(&cap[1]);
             if let Some(name) = interpreter_path.file_name() {
                 match name.to_string_lossy().borrow() {
-                    "ash" | "bash" | "dash" | "ksh" | "mksh" | "pdksh" | "rc" | "sh" | "zsh" => {
-                        return Some(Bash)
-                    }
+                    "ash" | "bash" | "dash" | "ksh" | "mksh" | "pdksh" | "rc" | "sh" | "zsh" => return Some(Bash),
                     "tcc" => return Some(C),
                     "lisp" | "sbc" | "ccl" | "clisp" | "ecl" => return Some(CommonLisp),
                     "elixir" => return Some(Elixir),
@@ -584,8 +565,9 @@ fn from_shebang(src: &str) -> Option<Language> {
                     "escript" => return Some(Erlang),
                     "hhvm" => return Some(Hack),
                     "runghc" | "runhaskell" | "runhugs" => return Some(Haskell),
-                    "chakra" | "d8" | "gjs" | "js" | "node" | "nodejs" | "qjs" | "rhino" | "v8"
-                    | "v8-shell" => return Some(JavaScript),
+                    "chakra" | "d8" | "gjs" | "js" | "node" | "nodejs" | "qjs" | "rhino" | "v8" | "v8-shell" => {
+                        return Some(JavaScript);
+                    }
                     "ocaml" | "ocamlrun" | "ocamlscript" => return Some(OCaml),
                     "perl" => return Some(Perl),
                     "python" | "python2" | "python3" => return Some(Python),
@@ -624,6 +606,83 @@ fn from_glob(path: &Path) -> Option<Language> {
         None => None,
     }
 }
+
+/// Compile-time mapping from the “language id” strings shown in the
+/// <language_strings> markdown table to the corresponding enum
+/// variants.  Repeated `=>` lines are aliases.
+pub(crate) static LANGUAGE_MAP_FROM_LSP: phf::Map<&'static str, Language> = phf_map! {
+    // ─── one-to-one or obvious aliases ──────────────────────────────
+    "ada"              => Language::Ada,
+    "apex"             => Language::Apex,
+    "bash"             => Language::Bash,
+    "c"                => Language::C,
+    "clojure"          => Language::Clojure,
+    "cpp"              => Language::CPlusPlus,
+    "cuda-cpp"         => Language::CPlusPlus,
+    "csharp"           => Language::CSharp,
+    "css"              => Language::Css,
+    "dart"             => Language::Dart,
+    "erlang"           => Language::Erlang,
+    "fsharp"           => Language::FSharp,
+    "go"               => Language::Go,
+    "haskell"          => Language::Haskell,
+    "html"             => Language::Html,
+    "java"             => Language::Java,
+    "javascript"       => Language::JavaScript,
+    "javascriptreact"  => Language::JavascriptJsx,
+    "json"             => Language::Json,
+    "julia"            => Language::Julia,
+    "latex"            => Language::LaTeX,
+    "lua"              => Language::Lua,
+    "makefile"         => Language::Make,
+    "objective-c"      => Language::ObjC,
+    "objective-cpp"    => Language::ObjC,
+    "ocaml"            => Language::OCaml,
+    "pascal"           => Language::Pascal,
+    "perl"             => Language::Perl,
+    "perl6"            => Language::Perl,
+    "php"              => Language::Php,
+    "python"           => Language::Python,
+    "r"                => Language::R,
+    "ruby"             => Language::Ruby,
+    "rust"             => Language::Rust,
+    "scss"             => Language::Scss,
+    "sass"             => Language::Scss,
+    "sql"              => Language::Sql,
+    "swift"            => Language::Swift,
+    "typescript"       => Language::TypeScript,
+    "typescriptreact"  => Language::TypeScriptTsx,
+    "xml"              => Language::Xml,
+    "yaml"             => Language::Yaml,
+    "zig"              => Language::Zig,
+
+    // ─── extra enum values that VC-Code never sends but are handy
+    //      when the caller already holds the bare enum string
+    //      (kept here so we can call the function for any variant)
+    "cmake"            => Language::CMake,
+    "commonlisp"       => Language::CommonLisp,
+    "device-tree"      => Language::DeviceTree,
+    "elixir"           => Language::Elixir,
+    "elm"              => Language::Elm,
+    "elvish"           => Language::Elvish,
+    "emacslisp"        => Language::EmacsLisp,
+    "gleam"            => Language::Gleam,
+    "hack"             => Language::Hack,
+    "hare"             => Language::Hare,
+    "hcl"              => Language::Hcl,
+    "janet"            => Language::Janet,
+    "kotlin"           => Language::Kotlin,
+    "newick"           => Language::Newick,
+    "nix"              => Language::Nix,
+    "qml"              => Language::Qml,
+    "racket"           => Language::Racket,
+    "scala"            => Language::Scala,
+    "scheme"           => Language::Scheme,
+    "smali"            => Language::Smali,
+    "solidity"         => Language::Solidity,
+    "toml"             => Language::Toml,
+    "vhdl"             => Language::Vhdl,
+};
 
 #[cfg(test)]
 mod tests {
@@ -673,10 +732,7 @@ mod tests {
     #[test]
     fn test_guess_by_emacs_mode_second_line() {
         let path = Path::new("foo");
-        assert_eq!(
-            guess(path, "#!/bin/bash\n; -*- mode: Lisp; -*-", &[]),
-            Some(CommonLisp)
-        );
+        assert_eq!(guess(path, "#!/bin/bash\n; -*- mode: Lisp; -*-", &[]), Some(CommonLisp));
     }
 
     #[test]

@@ -88,12 +88,34 @@ use typed_arena::Arena;
 use crate::{
     diff::sliders::fix_all_sliders,
     dijkstra::mark_syntax,
+    display::style::BackgroundColor,
     lines::MaxLine,
     lsp::custom::run_server_stdio,
     options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode},
     parse::{syntax::init_all_info, tree_sitter_parser as tsp},
     summary::{DiffResult, FileContent, FileFormat},
     syntax::init_next_prev,
+};
+
+const DEFAULT_DISPLAY_OPTIONS_LSP: DisplayOptions = DisplayOptions {
+    background_color: BackgroundColor::Dark,
+    use_color: false,
+    display_mode: DisplayMode::Json3,
+    print_unchanged: true,
+    tab_width: 4,
+    terminal_width: 80,
+    num_context_lines: 0,
+    syntax_highlight: false,
+    sort_paths: false,
+};
+
+const DEFAULT_DIFF_OPTIONS_LSP: DiffOptions = DiffOptions {
+    graph_limit: 9999999,
+    byte_limit: 1000000,
+    parse_error_limit: 10,
+    check_only: false,
+    ignore_comments: false,
+    strip_cr: true,
 };
 
 const BACKTRACE_ENV: &str = "RUST_BACKTRACE";
@@ -972,6 +994,10 @@ pub(crate) fn diff_for_lsp(
             std::process::exit(4);
         }
     };
+
+    // LANGUAGE_MAP_FROM_LSP
+    // DEFAULT_DISPLAY_OPTIONS_LSP
+    // DEFAULT_DIFF_OPTIONS_LSP
 
     diff_file_content(
         &display_path,
