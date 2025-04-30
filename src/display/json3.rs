@@ -172,7 +172,7 @@ impl Serialize for File<'_> {
     }
 }
 
-fn diffresult_to_range<'f>(summary: &'f DiffResult) -> Vec<Range> {
+pub fn diffresult_to_ranges<'f>(summary: &'f DiffResult) -> Vec<Range> {
     match (&summary.lhs_src, &summary.rhs_src) {
         (FileContent::Text(lhs_src), FileContent::Text(rhs_src)) => {
             // TODO: move into function as it is effectively duplicates lines 365-375 of main::print_diff_result
@@ -354,31 +354,6 @@ struct Change2<'c> {
     end: u32,
     content: &'c str,
     highlight_type: &'c syntax::MatchKind,
-}
-
-// pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
-//     let files = diffs
-//         .iter()
-//         .map(File::from)
-//         .filter(|f| print_unchanged || f.status != Status::Unchanged)
-//         .collect::<Vec<File>>();
-//     tracing::info!("{}", serde_json::to_string(&files).expect("failed to serialize files"));
-// }
-
-// pub(crate) fn print(diff: &DiffResult) -> Result<String, serde_json::Error> {
-// pub(crate) fn print(diff: &DiffResult) -> Result<Vec<Range>> {
-pub fn print(diff: &DiffResult) -> Vec<Range> {
-    diffresult_to_range(diff)
-    // let file = File::from(diff);
-    // Vec::from(&file)
-    // let ranges = Vec::from(&file);
-    // serde_json::to_string(&ranges)
-
-    // tracing::info!(
-    // "{}",
-    // serde_json::to_string(&ranges).expect("failed to serialize ranges")
-    // )
-    // tracing::info!("{}", serde_json::to_string(&file).expect("failed to serialize file"))
 }
 
 fn add_changes_to_side<'s>(

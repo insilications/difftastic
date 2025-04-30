@@ -18,7 +18,7 @@ use lsp_types::{
 
 use crate::{
     diff_for_lsp,
-    display::json3,
+    display::json3::diffresult_to_ranges,
     lsp::{cache, lsp_ext, uri_ext::UriExt},
 };
 
@@ -391,7 +391,7 @@ impl Server {
                 Ok(diff_result) => {
                     if diff_result.has_reportable_change() {
                         ready(Ok(Some(lsp_ext::DiffRangesResponse {
-                            ranges: json3::print(&diff_result),
+                            ranges: diffresult_to_ranges(&diff_result),
                         })))
                         // match json3::print(&diff_result) {
                         //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
