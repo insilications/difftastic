@@ -18,51 +18,117 @@ use crate::{
     summary::DiffResultLsp,
 };
 
+// pub fn diffresult_to_ranges2(summary: &DiffResultLsp) -> Vec<Range> {
+//     use syntax::MatchKind;
+//     let mut ranges = Vec::new();
+
+//     // If there's no RHS content or no positions, nothing to do.
+//     if summary.rhs_src.is_empty() {
+//         return ranges;
+//     }
+
+//     // 1) Group only the novel spans by their line number. We skip UnchangedToken and UnchangedPartOfNovelItem here.
+//     let mut by_line: BTreeMap<u32, Vec<(u32, u32)>> = BTreeMap::new();
+//     for m in &summary.rhs_positions {
+//         match m.kind {
+//             MatchKind::Novel { .. } | MatchKind::NovelWord { .. } => {
+//                 let ln = m.pos.line.0;
+//                 by_line.entry(ln).or_default().push((m.pos.start_col, m.pos.end_col));
+//             }
+//             _ => {}
+//         }
+//     }
+
+//     // 2) For each line, sort its spans and merge any that overlap or touch. Emit a single Range per merged span.
+//     for (ln, mut spans) in by_line {
+//         spans.sort_unstable_by_key(|&(s, _)| s);
+//         let mut iter = spans.into_iter();
+//         let (mut cur_start, mut cur_end) = iter.next().unwrap();
+//         for (s, e) in iter {
+//             if s <= cur_end {
+//                 // overlap or abut → extend
+//                 cur_end = cur_end.max(e);
+//             } else {
+//                 // gap → flush previous
+//                 ranges.push(Range {
+//                     start: Position::new(ln, cur_start),
+//                     end: Position::new(ln, cur_end),
+//                 });
+//                 cur_start = s;
+//                 cur_end = e;
+//             }
+//         }
+//         // flush last
+//         ranges.push(Range {
+//             start: Position::new(ln, cur_start),
+//             end: Position::new(ln, cur_end),
+//         });
+//     }
+
+//     ranges
+// }
+
 pub fn diffresult_to_ranges2(summary: &DiffResultLsp) -> Vec<Range> {
     use syntax::MatchKind;
     let mut ranges = Vec::new();
 
-    // If there's no RHS content or no positions, nothing to do.
+    // Bail early if there's no rhs text or no positions.
     if summary.rhs_src.is_empty() {
         return ranges;
     }
 
-    // 1) Group only the novel spans by their line number. We skip UnchangedToken and UnchangedPartOfNovelItem here.
-    let mut by_line: BTreeMap<u32, Vec<(u32, u32)>> = BTreeMap::new();
+    // 1) For each novel/rhs‐only MatchedPos, bucket them by line, preserving the MatchKind so we know which are `Novel`
+    //    vs `NovelWord`.
+    let mut by_line: BTreeMap<u32, Vec<(MatchKind, u32, u32)>> = BTreeMap::new();
     for m in &summary.rhs_positions {
-        match m.kind {
+        match &m.kind {
             MatchKind::Novel { .. } | MatchKind::NovelWord { .. } => {
                 let ln = m.pos.line.0;
-                by_line.entry(ln).or_default().push((m.pos.start_col, m.pos.end_col));
+                by_line
+                    .entry(ln)
+                    .or_default()
+                    .push((m.kind.clone(), m.pos.start_col, m.pos.end_col));
             }
             _ => {}
         }
     }
 
-    // 2) For each line, sort its spans and merge any that overlap or touch. Emit a single Range per merged span.
+    // 2) For each line in order, sort by start_col, then walk once and merge _only_ consecutive MatchKind::Novel spans.
     for (ln, mut spans) in by_line {
-        spans.sort_unstable_by_key(|&(s, _)| s);
-        let mut iter = spans.into_iter();
-        let (mut cur_start, mut cur_end) = iter.next().unwrap();
-        for (s, e) in iter {
-            if s <= cur_end {
-                // overlap or abut → extend
-                cur_end = cur_end.max(e);
-            } else {
-                // gap → flush previous
+        // sort by the start column
+        spans.sort_unstable_by_key(|&(_, s, _)| s);
+
+        let mut i = 0;
+        while i < spans.len() {
+            let (kind, start, mut end) = spans[i].clone();
+
+            if let MatchKind::Novel { .. } = kind {
+                // merge all immediately following Novel spans
+                i += 1;
+                while i < spans.len() {
+                    let (ref next_kind, ns, ne) = spans[i];
+                    if let MatchKind::Novel { .. } = next_kind {
+                        // extend our end
+                        end = end.max(ne);
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+                // emit one big range covering all merged Novel
                 ranges.push(Range {
-                    start: Position::new(ln, cur_start),
-                    end: Position::new(ln, cur_end),
+                    start: Position::new(ln, start),
+                    end: Position::new(ln, end),
                 });
-                cur_start = s;
-                cur_end = e;
+            } else {
+                // NovelWord (or any other novel‐type): emit single
+                ranges.push(Range {
+                    start: Position::new(ln, start),
+                    end: Position::new(ln, end),
+                });
+                i += 1;
             }
         }
-        // flush last
-        ranges.push(Range {
-            start: Position::new(ln, cur_start),
-            end: Position::new(ln, cur_end),
-        });
     }
 
     ranges
