@@ -18,6 +18,56 @@ use crate::{
     summary::DiffResultLsp,
 };
 
+pub fn diffresult_to_ranges2(summary: &DiffResultLsp) -> Vec<Range> {
+    use syntax::MatchKind;
+    let mut ranges = Vec::new();
+
+    // If there's no RHS content or no positions, nothing to do.
+    if summary.rhs_src.is_empty() {
+        return ranges;
+    }
+
+    // 1) Group only the novel spans by their line number. We skip UnchangedToken and UnchangedPartOfNovelItem here.
+    let mut by_line: BTreeMap<u32, Vec<(u32, u32)>> = BTreeMap::new();
+    for m in &summary.rhs_positions {
+        match m.kind {
+            MatchKind::Novel { .. } | MatchKind::NovelWord { .. } => {
+                let ln = m.pos.line.0;
+                by_line.entry(ln).or_default().push((m.pos.start_col, m.pos.end_col));
+            }
+            _ => {}
+        }
+    }
+
+    // 2) For each line, sort its spans and merge any that overlap or touch. Emit a single Range per merged span.
+    for (ln, mut spans) in by_line {
+        spans.sort_unstable_by_key(|&(s, _)| s);
+        let mut iter = spans.into_iter();
+        let (mut cur_start, mut cur_end) = iter.next().unwrap();
+        for (s, e) in iter {
+            if s <= cur_end {
+                // overlap or abut → extend
+                cur_end = cur_end.max(e);
+            } else {
+                // gap → flush previous
+                ranges.push(Range {
+                    start: Position::new(ln, cur_start),
+                    end: Position::new(ln, cur_end),
+                });
+                cur_start = s;
+                cur_end = e;
+            }
+        }
+        // flush last
+        ranges.push(Range {
+            start: Position::new(ln, cur_start),
+            end: Position::new(ln, cur_end),
+        });
+    }
+
+    ranges
+}
+
 pub fn diffresult_to_ranges<'f>(summary: &'f DiffResultLsp) -> Vec<Range> {
     let lhs_src = &summary.lhs_src;
     let rhs_src = &summary.rhs_src;
@@ -98,6 +148,22 @@ pub fn diffresult_to_ranges<'f>(summary: &'f DiffResultLsp) -> Vec<Range> {
 
     tracing::debug!("ranges.len(): {}", ranges.len());
     ranges
+}
+
+pub fn print(diff: &DiffResultLsp) {
+    let file = diffresult_to_ranges(diff);
+    tracing::debug!(
+        "diffresult_to_ranges: {}",
+        serde_json::to_string(&file).expect("failed to serialize file")
+    );
+}
+
+pub fn print2(diff: &DiffResultLsp) {
+    let file = diffresult_to_ranges2(diff);
+    tracing::debug!(
+        "diffresult_to_ranges2: {}",
+        serde_json::to_string(&file).expect("failed to serialize file")
+    );
 }
 
 #[derive(Debug, Serialize)]

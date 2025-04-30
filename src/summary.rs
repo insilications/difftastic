@@ -64,7 +64,7 @@ impl DiffResult {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct DiffResultLsp {
     pub(crate) file_format: FileFormat,
     pub(crate) lhs_src: String,

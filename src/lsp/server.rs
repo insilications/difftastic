@@ -18,7 +18,7 @@ use lsp_types::{
 
 use crate::{
     diff_for_lsp,
-    display::json3::diffresult_to_ranges,
+    display::json3::{diffresult_to_ranges, print, print2},
     lsp::{cache, lsp_ext, uri_ext::UriExt},
 };
 
@@ -390,6 +390,12 @@ impl Server {
             match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
                 Ok(diff_result) => {
                     if diff_result.has_reportable_change() {
+                        let diff_result1 = diff_result.clone();
+                        let diff_result2 = diff_result.clone();
+
+                        print(&diff_result1);
+                        print2(&diff_result2);
+
                         ready(Ok(Some(lsp_ext::DiffRangesResponse {
                             ranges: diffresult_to_ranges(&diff_result),
                         })))
