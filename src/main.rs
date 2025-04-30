@@ -95,7 +95,7 @@ use crate::{
     lsp::custom::run_server_stdio,
     options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode},
     parse::{syntax::init_all_info, tree_sitter_parser as tsp},
-    summary::{DiffResult, FileContent, FileFormat},
+    summary::{DiffResult, DiffResultLsp, FileContent, FileFormat},
     syntax::init_next_prev,
 };
 
@@ -974,7 +974,7 @@ fn diff_lsp_content(
     // display_options: &DisplayOptions,
     // diff_options: &DiffOptions,
     // overrides: &[(LanguageOverride, Vec<glob::Pattern>)],
-) -> DiffResult {
+) -> DiffResultLsp {
     // let guess_src = match rhs_path {
     //     FileArgument::DevNull => &lhs_src,
     //     _ => &rhs_src,
@@ -995,12 +995,11 @@ fn diff_lsp_content(
 
         // If the two files are byte-for-byte identical, return early
         // rather than doing any more work.
-        return DiffResult {
-            extra_info,
+        return DiffResultLsp {
             display_path: display_path.to_owned(),
             file_format,
-            lhs_src: FileContent::Text("".into()),
-            rhs_src: FileContent::Text("".into()),
+            lhs_src: "".into(),
+            rhs_src: "".into(),
             lhs_positions: vec![],
             rhs_positions: vec![],
             hunks: vec![],
@@ -1012,9 +1011,6 @@ fn diff_lsp_content(
     let (file_format, lhs_positions, rhs_positions) = match lang_config {
         None => {
             let file_format = FileFormat::PlainText;
-            if DEFAULT_DIFF_OPTIONS_LSP.check_only {
-                return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
-            }
 
             let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
             let rhs_positions = line_parser::change_positions(rhs_src, lhs_src);
@@ -1036,12 +1032,11 @@ fn diff_lsp_content(
                         Ok((lhs, rhs)) => {
                             if DEFAULT_DIFF_OPTIONS_LSP.check_only {
                                 let has_syntactic_changes = lhs != rhs;
-                                return DiffResult {
-                                    extra_info,
+                                return DiffResultLsp {
                                     display_path: display_path.to_owned(),
                                     file_format: FileFormat::SupportedLanguage(language),
-                                    lhs_src: FileContent::Text(lhs_src.to_owned()),
-                                    rhs_src: FileContent::Text(rhs_src.to_owned()),
+                                    lhs_src: lhs_src.to_owned(),
+                                    rhs_src: rhs_src.to_owned(),
                                     lhs_positions: vec![],
                                     rhs_positions: vec![],
                                     hunks: vec![],
@@ -1115,10 +1110,6 @@ fn diff_lsp_content(
                                 ),
                             };
 
-                            if DEFAULT_DIFF_OPTIONS_LSP.check_only {
-                                return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
-                            }
-
                             let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
                             let rhs_positions = line_parser::change_positions(rhs_src, lhs_src);
                             (file_format, lhs_positions, rhs_positions)
@@ -1130,10 +1121,6 @@ fn diff_lsp_content(
                     let file_format = FileFormat::TextFallback {
                         reason: format!("{} exceeded DFT_BYTE_LIMIT", &format_size(num_bytes, format_options)),
                     };
-
-                    if DEFAULT_DIFF_OPTIONS_LSP.check_only {
-                        return check_only_text(&file_format, display_path, extra_info, lhs_src, rhs_src);
-                    }
 
                     let lhs_positions = line_parser::change_positions(lhs_src, rhs_src);
                     let rhs_positions = line_parser::change_positions(rhs_src, lhs_src);
@@ -1157,12 +1144,11 @@ fn diff_lsp_content(
     );
     let has_syntactic_changes = !hunks.is_empty();
 
-    DiffResult {
-        extra_info,
+    DiffResultLsp {
         display_path: display_path.to_owned(),
         file_format,
-        lhs_src: FileContent::Text(lhs_src.to_owned()),
-        rhs_src: FileContent::Text(rhs_src.to_owned()),
+        lhs_src: lhs_src.to_owned(),
+        rhs_src: rhs_src.to_owned(),
         lhs_positions,
         rhs_positions,
         hunks,
@@ -1171,7 +1157,7 @@ fn diff_lsp_content(
     }
 }
 
-pub(crate) fn diff_for_lsp(rhs_path: &Path, lhs_src: &str, language_id: &str) -> Result<DiffResult, ResponseError> {
+pub(crate) fn diff_for_lsp(rhs_path: &Path, lhs_src: &str, language_id: &str) -> Result<DiffResultLsp, ResponseError> {
     let display_path = rhs_path.display().to_string();
     match read_file_lsp(rhs_path) {
         Ok(rhs_bytes) => {

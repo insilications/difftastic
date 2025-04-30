@@ -35,14 +35,7 @@ pub fn diffresult_to_ranges<'f>(summary: &'f DiffResult) -> Vec<Range> {
                 0,
             );
 
-            if hunks.is_empty() {
-                return vec![];
-            }
-
-            if lhs_src.is_empty() {
-                return vec![];
-            }
-            if rhs_src.is_empty() {
+            if hunks.is_empty() || lhs_src.is_empty() || rhs_src.is_empty() {
                 return vec![];
             }
 
@@ -110,6 +103,92 @@ pub fn diffresult_to_ranges<'f>(summary: &'f DiffResult) -> Vec<Range> {
         }
     }
 }
+
+// pub fn diffresult_to_ranges<'f>(summary: &'f DiffResult) -> Vec<Range> {
+//     match (&summary.lhs_src, &summary.rhs_src) {
+//         (FileContent::Text(lhs_src), FileContent::Text(rhs_src)) => {
+//             // TODO: move into function as it is effectively duplicates lines 365-375 of main::print_diff_result
+//             let opposite_to_lhs = opposite_positions(&summary.lhs_positions);
+//             let opposite_to_rhs = opposite_positions(&summary.rhs_positions);
+
+//             let hunks = matched_pos_to_hunks(&summary.lhs_positions, &summary.rhs_positions);
+//             let hunks = merge_adjacent(
+//                 &hunks,
+//                 &opposite_to_lhs,
+//                 &opposite_to_rhs,
+//                 lhs_src.max_line(),
+//                 rhs_src.max_line(),
+//                 0,
+//             );
+
+//             if hunks.is_empty() || lhs_src.is_empty() || rhs_src.is_empty() {
+//                 return vec![];
+//             }
+
+//             let lhs_lines = lhs_src.split('\n').collect::<Vec<&str>>();
+//             let rhs_lines = rhs_src.split('\n').collect::<Vec<&str>>();
+
+//             let (_, rhs_lines_with_novel) = lines_with_novel(&summary.lhs_positions, &summary.rhs_positions);
+
+//             let matched_lines =
+//                 all_matched_lines_filled(&summary.lhs_positions, &summary.rhs_positions, &lhs_lines, &rhs_lines);
+//             let mut matched_lines = &matched_lines[..];
+
+//             // `lines_for_all_chunks` will be used for deduplication lookups. Keep using `HashMap` as it offers
+//             // average O(1) lookups/insertions compared to BTreeMap's O(log N).
+//             let mut lines_for_all_chunks: HashMap<u32, AllChunks> = HashMap::new();
+
+//             // let mut ranges: Vec<Range> = Vec::new();
+//             let mut ranges: Vec<Range> = Vec::with_capacity(hunks.len());
+//             // let mut chunks = Vec::with_capacity(hunks.len());
+//             for hunk in &hunks {
+//                 // Sorted iteration is necessary for `lines`. Keep using `BTreeMap` here.
+//                 let mut lines: BTreeMap<Option<u32>, Line<'f>> = BTreeMap::new();
+
+//                 let (start_i, end_i) = matched_lines_indexes_for_hunk(matched_lines, hunk, 0);
+//                 let aligned_lines = &matched_lines[start_i..end_i];
+//                 matched_lines = &matched_lines[start_i..];
+
+//                 for (_, rhs_line_num) in aligned_lines {
+//                     if !rhs_lines_with_novel.contains(&rhs_line_num.unwrap_or(LineNumber(0))) {
+//                         continue;
+//                     }
+
+//                     if let Some(line_num) = rhs_line_num {
+//                         add_changes_to_side(
+//                             &mut lines,
+//                             *line_num,
+//                             &rhs_lines,
+//                             &summary.rhs_positions,
+//                             &mut lines_for_all_chunks,
+//                         );
+//                     }
+//                 }
+
+//                 // If changes were added to `lines` for this hunk, collect them.
+//                 // BTreeMap ensures they are collected in line number order.
+//                 if !lines.is_empty() {
+//                     let kk: Vec<Line<'_>> = lines.into_values().collect();
+//                     for line in kk {
+//                         if let Some(side) = &line.rhs {
+//                             let ln = side.line_number;
+//                             ranges.extend(side.changes.iter().map(|ch| Range {
+//                                 start: Position::new(ln, ch.start),
+//                                 end: Position::new(ln, ch.end),
+//                             }));
+//                         }
+//                     }
+//                     // chunks.push(lines.into_values().collect());
+//                 }
+//             }
+
+//             ranges
+//         }
+//         (_, _) => {
+//             vec![]
+//         }
+//     }
+// }
 
 // impl<'f> From<&'f File<'_>> for Vec<Range> {
 //     fn from(file: &'f File<'_>) -> Self {

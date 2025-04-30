@@ -56,12 +56,33 @@ pub(crate) struct DiffResult {
 
 impl DiffResult {
     pub(crate) fn has_reportable_change(&self) -> bool {
-        if matches!(self.lhs_src, FileContent::Binary)
-            || matches!(self.rhs_src, FileContent::Binary)
-        {
+        if matches!(self.lhs_src, FileContent::Binary) || matches!(self.rhs_src, FileContent::Binary) {
             return self.has_byte_changes;
         }
 
+        self.has_syntactic_changes
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct DiffResultLsp {
+    pub(crate) display_path: String,
+
+    pub(crate) file_format: FileFormat,
+    pub(crate) lhs_src: String,
+    pub(crate) rhs_src: String,
+    pub(crate) hunks: Vec<Hunk>,
+
+    pub(crate) lhs_positions: Vec<MatchedPos>,
+    pub(crate) rhs_positions: Vec<MatchedPos>,
+
+    pub(crate) has_byte_changes: bool,
+    pub(crate) has_syntactic_changes: bool,
+}
+
+impl DiffResultLsp {
+    #[inline]
+    pub(crate) fn has_reportable_change(&self) -> bool {
         self.has_syntactic_changes
     }
 }
