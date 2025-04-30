@@ -15,10 +15,10 @@ use crate::{
     },
     lines::MaxLine,
     parse::syntax::{self, MatchedPos},
-    summary::{DiffResult, FileContent},
+    summary::{DiffResultLsp, FileContent},
 };
 
-pub fn diffresult_to_ranges<'f>(summary: &'f DiffResult) -> Vec<Range> {
+pub fn diffresult_to_ranges<'f>(summary: &'f DiffResultLsp) -> Vec<Range> {
     match (&summary.lhs_src, &summary.rhs_src) {
         (FileContent::Text(lhs_src), FileContent::Text(rhs_src)) => {
             // TODO: move into function as it is effectively duplicates lines 365-375 of main::print_diff_result

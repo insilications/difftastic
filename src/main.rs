@@ -964,8 +964,8 @@ fn print_diff_result(display_options: &DisplayOptions, summary: &DiffResult) {
 }
 
 fn diff_lsp_content(
-    display_path: &str,
-    extra_info: Option<String>,
+    // display_path: &str,
+    // extra_info: Option<String>,
     // _lhs_path: &FileArgument,
     // rhs_path: &FileArgument,
     lhs_src: &str,
@@ -1152,12 +1152,12 @@ fn diff_lsp_content(
 }
 
 pub(crate) fn diff_for_lsp(rhs_path: &Path, lhs_src: &str, language_id: &str) -> Result<DiffResultLsp, ResponseError> {
-    let display_path = rhs_path.display().to_string();
     match read_file_lsp(rhs_path) {
         Ok(rhs_bytes) => {
             let mut rhs_src = match guess_content(&rhs_bytes) {
                 ProbableFileKind::Text(src) => src,
                 ProbableFileKind::Binary => {
+                    let display_path = rhs_path.display().to_string();
                     tracing::error!("rhs_src == ProbableFileKind::Binary for {display_path}");
                     return Err(ResponseError::new(
                         ErrorCode::INTERNAL_ERROR,
@@ -1172,7 +1172,7 @@ pub(crate) fn diff_for_lsp(rhs_path: &Path, lhs_src: &str, language_id: &str) ->
 
             rhs_src.retain(|c| c != '\r');
 
-            Ok(diff_lsp_content(&display_path, None, lhs_src, &rhs_src, language_id))
+            Ok(diff_lsp_content(lhs_src, &rhs_src, language_id))
         }
         Err(err) => Err(err),
     }
