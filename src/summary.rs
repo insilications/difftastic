@@ -66,8 +66,6 @@ impl DiffResult {
 
 #[derive(Debug)]
 pub(crate) struct DiffResultLsp {
-    pub(crate) display_path: String,
-
     pub(crate) file_format: FileFormat,
     pub(crate) lhs_src: String,
     pub(crate) rhs_src: String,
@@ -76,7 +74,6 @@ pub(crate) struct DiffResultLsp {
     pub(crate) lhs_positions: Vec<MatchedPos>,
     pub(crate) rhs_positions: Vec<MatchedPos>,
 
-    pub(crate) has_byte_changes: bool,
     pub(crate) has_syntactic_changes: bool,
 }
 

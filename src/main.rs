@@ -996,14 +996,12 @@ fn diff_lsp_content(
         // If the two files are byte-for-byte identical, return early
         // rather than doing any more work.
         return DiffResultLsp {
-            display_path: display_path.to_owned(),
             file_format,
             lhs_src: "".into(),
             rhs_src: "".into(),
             lhs_positions: vec![],
             rhs_positions: vec![],
             hunks: vec![],
-            has_byte_changes: false,
             has_syntactic_changes: false,
         };
     }
@@ -1033,14 +1031,12 @@ fn diff_lsp_content(
                             if DEFAULT_DIFF_OPTIONS_LSP.check_only {
                                 let has_syntactic_changes = lhs != rhs;
                                 return DiffResultLsp {
-                                    display_path: display_path.to_owned(),
                                     file_format: FileFormat::SupportedLanguage(language),
                                     lhs_src: lhs_src.to_owned(),
                                     rhs_src: rhs_src.to_owned(),
                                     lhs_positions: vec![],
                                     rhs_positions: vec![],
                                     hunks: vec![],
-                                    has_byte_changes: true,
                                     has_syntactic_changes,
                                 };
                             }
@@ -1145,14 +1141,12 @@ fn diff_lsp_content(
     let has_syntactic_changes = !hunks.is_empty();
 
     DiffResultLsp {
-        display_path: display_path.to_owned(),
         file_format,
         lhs_src: lhs_src.to_owned(),
         rhs_src: rhs_src.to_owned(),
         lhs_positions,
         rhs_positions,
         hunks,
-        has_byte_changes: true,
         has_syntactic_changes,
     }
 }
