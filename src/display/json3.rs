@@ -3,10 +3,9 @@ use std::{
     hash::Hash,
 };
 
-use anyhow::Result;
 use line_numbers::LineNumber;
 use lsp_types::{Position, Range};
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::Serialize;
 
 use crate::{
     display::{
@@ -16,161 +15,8 @@ use crate::{
     },
     lines::MaxLine,
     parse::syntax::{self, MatchedPos},
-    summary::{DiffResult, FileContent, FileFormat},
+    summary::{DiffResult, FileContent},
 };
-
-#[derive(Debug, Serialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum Status {
-    Unchanged,
-    Changed,
-    Created,
-    Deleted,
-}
-
-#[derive(Debug)]
-struct File<'f> {
-    language: &'f FileFormat,
-    path: &'f str,
-    chunks: Vec<Vec<Line<'f>>>,
-    status: Status,
-}
-
-impl<'f> File<'f> {
-    fn with_sections(language: &'f FileFormat, path: &'f str, chunks: Vec<Vec<Line<'f>>>) -> File<'f> {
-        File {
-            language,
-            path,
-            chunks,
-            status: Status::Changed,
-        }
-    }
-
-    fn with_status(language: &'f FileFormat, path: &'f str, status: Status) -> File<'f> {
-        File {
-            language,
-            path,
-            chunks: Vec::new(),
-            status,
-        }
-    }
-}
-
-impl<'f> From<&'f DiffResult> for File<'f> {
-    // This function converts a DiffResult (containing information about file differences, including source content and
-    // matched positions) into a File struct suitable for JSON serialization. It calculates hunks of changes, filters
-    // relevant lines, and delegates the extraction of specific changes within lines to add_changes_to_side.
-    fn from(summary: &'f DiffResult) -> Self {
-        match (&summary.lhs_src, &summary.rhs_src) {
-            (FileContent::Text(lhs_src), FileContent::Text(rhs_src)) => {
-                // TODO: move into function as it is effectively duplicates lines 365-375 of main::print_diff_result
-                let opposite_to_lhs = opposite_positions(&summary.lhs_positions);
-                let opposite_to_rhs = opposite_positions(&summary.rhs_positions);
-
-                let hunks = matched_pos_to_hunks(&summary.lhs_positions, &summary.rhs_positions);
-                let hunks = merge_adjacent(
-                    &hunks,
-                    &opposite_to_lhs,
-                    &opposite_to_rhs,
-                    lhs_src.max_line(),
-                    rhs_src.max_line(),
-                    0,
-                );
-
-                if hunks.is_empty() {
-                    return File::with_status(&summary.file_format, &summary.display_path, Status::Unchanged);
-                }
-
-                if lhs_src.is_empty() {
-                    return File::with_status(&summary.file_format, &summary.display_path, Status::Created);
-                }
-                if rhs_src.is_empty() {
-                    return File::with_status(&summary.file_format, &summary.display_path, Status::Deleted);
-                }
-
-                let lhs_lines = lhs_src.split('\n').collect::<Vec<&str>>();
-                let rhs_lines = rhs_src.split('\n').collect::<Vec<&str>>();
-
-                let (_, rhs_lines_with_novel) = lines_with_novel(&summary.lhs_positions, &summary.rhs_positions);
-
-                let matched_lines =
-                    all_matched_lines_filled(&summary.lhs_positions, &summary.rhs_positions, &lhs_lines, &rhs_lines);
-                let mut matched_lines = &matched_lines[..];
-
-                // `lines_for_all_chunks` will be used for deduplication lookups. Keep using `HashMap` as it offers
-                // average O(1) lookups/insertions compared to BTreeMap's O(log N).
-                let mut lines_for_all_chunks: HashMap<u32, AllChunks> = HashMap::new();
-
-                let mut chunks = Vec::with_capacity(hunks.len());
-                for hunk in &hunks {
-                    // Sorted iteration is necessary for `lines`. Keep using `BTreeMap` here.
-                    let mut lines: BTreeMap<Option<u32>, Line<'f>> = BTreeMap::new();
-
-                    let (start_i, end_i) = matched_lines_indexes_for_hunk(matched_lines, hunk, 0);
-                    let aligned_lines = &matched_lines[start_i..end_i];
-                    matched_lines = &matched_lines[start_i..];
-
-                    for (_, rhs_line_num) in aligned_lines {
-                        if !rhs_lines_with_novel.contains(&rhs_line_num.unwrap_or(LineNumber(0))) {
-                            continue;
-                        }
-
-                        if let Some(line_num) = rhs_line_num {
-                            add_changes_to_side(
-                                &mut lines,
-                                *line_num,
-                                &rhs_lines,
-                                &summary.rhs_positions,
-                                &mut lines_for_all_chunks,
-                            );
-                        }
-                    }
-
-                    // If changes were added to `lines` for this hunk, collect them.
-                    // BTreeMap ensures they are collected in line number order.
-                    if !lines.is_empty() {
-                        chunks.push(lines.into_values().collect());
-                    }
-                }
-
-                File::with_sections(&summary.file_format, &summary.display_path, chunks)
-            }
-            (FileContent::Binary, FileContent::Binary) => {
-                let status = if summary.has_byte_changes {
-                    Status::Changed
-                } else {
-                    Status::Unchanged
-                };
-                File::with_status(&FileFormat::Binary, &summary.display_path, status)
-            }
-            (_, FileContent::Binary) | (FileContent::Binary, _) => {
-                File::with_status(&FileFormat::Binary, &summary.display_path, Status::Changed)
-            }
-        }
-    }
-}
-
-impl Serialize for File<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // equivalent to #[serde(skip_serializing_if = "Vec::is_empty")]
-        let mut file = if self.chunks.is_empty() {
-            serializer.serialize_struct("File", 3)?
-        } else {
-            let mut file = serializer.serialize_struct("File", 4)?;
-            file.serialize_field("chunks", &self.chunks)?;
-            file
-        };
-
-        file.serialize_field("language", &format!("{}", self.language))?;
-        file.serialize_field("path", &self.path)?;
-        file.serialize_field("status", &self.status)?;
-
-        file.end()
-    }
-}
 
 pub fn diffresult_to_ranges<'f>(summary: &'f DiffResult) -> Vec<Range> {
     match (&summary.lhs_src, &summary.rhs_src) {
@@ -265,40 +111,40 @@ pub fn diffresult_to_ranges<'f>(summary: &'f DiffResult) -> Vec<Range> {
     }
 }
 
-impl<'f> From<&'f File<'_>> for Vec<Range> {
-    fn from(file: &'f File<'_>) -> Self {
-        file.chunks
-            .iter()
-            .flat_map(|chunk| {
-                chunk.iter().filter_map(|line| {
-                    line.rhs.as_ref().map(|side| {
-                        side.changes.iter().map(|change| Range {
-                            start: Position::new(side.line_number, change.start),
-                            end: Position::new(side.line_number, change.end),
-                        })
-                    })
-                })
-            })
-            .flatten()
-            .collect()
-    }
-    // fn from(file: &'f File<'_>) -> Self {
-    //     file.chunks
-    //         .iter()
-    //         .flat_map(|chunk| {
-    //             chunk.iter().flat_map(|line| {
-    //                 line.rhs.as_ref().map(|side| {
-    //                     side.changes.iter().map(|change| Range {
-    //                         start: Position::new(side.line_number, change.start),
-    //                         end: Position::new(side.line_number, change.end),
-    //                     })
-    //                 })
-    //             })
-    //         })
-    //         .flatten()
-    //         .collect()
-    // }
-}
+// impl<'f> From<&'f File<'_>> for Vec<Range> {
+//     fn from(file: &'f File<'_>) -> Self {
+//         file.chunks
+//             .iter()
+//             .flat_map(|chunk| {
+//                 chunk.iter().filter_map(|line| {
+//                     line.rhs.as_ref().map(|side| {
+//                         side.changes.iter().map(|change| Range {
+//                             start: Position::new(side.line_number, change.start),
+//                             end: Position::new(side.line_number, change.end),
+//                         })
+//                     })
+//                 })
+//             })
+//             .flatten()
+//             .collect()
+//     }
+//     // fn from(file: &'f File<'_>) -> Self {
+//     //     file.chunks
+//     //         .iter()
+//     //         .flat_map(|chunk| {
+//     //             chunk.iter().flat_map(|line| {
+//     //                 line.rhs.as_ref().map(|side| {
+//     //                     side.changes.iter().map(|change| Range {
+//     //                         start: Position::new(side.line_number, change.start),
+//     //                         end: Position::new(side.line_number, change.end),
+//     //                     })
+//     //                 })
+//     //             })
+//     //         })
+//     //         .flatten()
+//     //         .collect()
+//     // }
+// }
 
 #[derive(Debug, Serialize)]
 struct Line<'l> {
