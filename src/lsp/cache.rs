@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use git2::{DiffOptions, ObjectType, Oid, Repository, Sort};
 
 /// Return all commits at/behind `rev` that modified `path`, newest first.
-/// Each entry is (summary, oid, *optional* file_content).
+/// Each entry is (summary, oid, *optional* `file_content`).
 ///
 /// `file_content` is
 ///   • `Some(Arc<str>)` – file existed in that commit (content is shared),
@@ -25,7 +25,8 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
     let pathspec = path
         .to_str() // Fallible but zero-cost if valid. Or use `to_string_lossy()`
         .context(format!(
-            "Path {path:?} is not valid UTF-8 (libgit2 requires UTF-8 pathspecs)"
+            "Path {} is not valid UTF-8 (libgit2 requires UTF-8 pathspecs)",
+            path.display()
         ))?;
     diff_opts.pathspec(pathspec);
 
@@ -55,8 +56,12 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
             // 1) Commit summary (unchanged from before)
             let summary = commit
                 .summary()
-                .map(|s| s.to_owned())
-                .unwrap_or_else(|| "<no subject>".into());
+                .map_or_else(|| "<no subject>".into(), std::borrow::ToOwned::to_owned);
+            // let summary = commit.summary().map_or_else(|| "<no subject>".into(), |s| s.to_owned());
+            // let summary = commit
+            //     .summary()
+            //     .map(|s| s.to_owned())
+            //     .unwrap_or_else(|| "<no subject>".into());
 
             // 2) Fetch the file contents, if the blob still exists
             let file_content: Option<Arc<str>> = match this_tree.get_path(path) {
@@ -179,8 +184,10 @@ fn put_version(
     path: PathBuf,
     commit: CommitId,
     revspec: RevSpec,
-    content: Arc<str>, // was String
-    summary: Arc<str>, // was String
+    content: &Arc<str>,
+    summary: &Arc<str>,
+    // content: Arc<str>
+    // summary: Arc<str>
 ) {
     // 1) Create one shared PathBuf
     let path_arc = Arc::new(path);
@@ -193,8 +200,8 @@ fn put_version(
         },
         FileVersion {
             // Just clone the Arcs – no re-allocation
-            content: Arc::clone(&content),
-            summary: Arc::clone(&summary),
+            content: Arc::clone(content),
+            summary: Arc::clone(summary),
         },
     );
 
@@ -202,7 +209,7 @@ fn put_version(
     revs.entry(Arc::clone(&path_arc)).or_default().insert(revspec, commit);
 }
 
-/// Resolve (“HEAD~2”, some/path) → (commit-id, &FileVersion)
+/// Resolve (“HEAD~2”, some/path) → (commit-id, &`FileVersion`)
 ///
 /// Returns `None` when either the path or the revspec is unknown.
 fn lookup<'a>(
@@ -227,7 +234,8 @@ fn lookup<'a>(
         .map(|fv| (commit_id, fv)) // <- return both
 }
 
-/// Iterate through recorded revspecs in RevStore for a particular path
+/// Iterate through recorded revspecs in `RevStore` for a particular path
+#[allow(dead_code)]
 fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
     // allocate only the PathBuf needed for the HashMap probe
     let path_buf = path.to_path_buf();
@@ -261,7 +269,7 @@ impl AppStateShared {
     // pub fn new(repo_path: PathBuf) -> Result<Self> {
     pub fn new(repo_path: &Path) -> Result<Self> {
         let repo = Repository::open(repo_path)?;
-        Ok(AppStateShared {
+        Ok(Self {
             repo: Arc::new(repo),
             // repo: None,
             // Initialize empty HashMaps inside RwLock and Arc
@@ -304,8 +312,8 @@ impl AppStateShared {
                 path.to_path_buf(),
                 commit,
                 revspec,
-                content_arc,
-                summary_arc,
+                &content_arc,
+                &summary_arc,
             );
             index += 1;
         }
@@ -327,7 +335,8 @@ impl AppStateShared {
             .map(|(commit_id, file_version_ref)| (commit_id, file_version_ref.clone())) // Clone FileVersion
     }
 
-    // Method to iterate - takes &self, uses read locks
+    /// Method to iterate - takes &self, uses read locks
+    #[allow(dead_code)]
     pub fn iterate_path_versions(&self, path: &Path) {
         let versions_guard = self.versions.read().expect("Version store lock poisoned");
         let revs_guard = self.revs.read().expect("Rev store lock poisoned");
@@ -336,9 +345,10 @@ impl AppStateShared {
         iterate_lookup(&*versions_guard, &*revs_guard, path);
     }
 
-    // Method to clone the state for sharing (cheap Arc clones)
+    /// Method to clone the state for sharing (cheap Arc clones)
+    #[allow(dead_code)]
     pub fn clone_state(&self) -> Self {
-        AppStateShared {
+        Self {
             repo: Arc::clone(&self.repo),
             versions: Arc::clone(&self.versions),
             revs: Arc::clone(&self.revs),

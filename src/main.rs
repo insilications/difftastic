@@ -112,8 +112,8 @@ const DEFAULT_DISPLAY_OPTIONS_LSP: DisplayOptions = DisplayOptions {
 };
 
 const DEFAULT_DIFF_OPTIONS_LSP: DiffOptions = DiffOptions {
-    graph_limit: 9999999,
-    byte_limit: 1000000,
+    graph_limit: 9_999_999,
+    byte_limit: 1_000_000,
     parse_error_limit: 10,
     check_only: false,
     ignore_comments: false,
@@ -989,10 +989,9 @@ fn diff_lsp_content(
     let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
 
     if lhs_src == rhs_src {
-        let file_format = match language {
-            Some(language) => FileFormat::SupportedLanguage(language),
-            None => FileFormat::PlainText,
-        };
+        let file_format = language.map_or(FileFormat::PlainText, |language| {
+            FileFormat::SupportedLanguage(language)
+        });
 
         // If the two files are byte-for-byte identical, return early
         // rather than doing any more work.

@@ -136,6 +136,7 @@ impl Server {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     fn on_initialize(
         &mut self,
         params: InitializeParams,
@@ -245,6 +246,7 @@ impl Server {
         // }))
     }
 
+    #[allow(clippy::unused_self)]
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
         tracing::info!("notif::Initialized");
         ControlFlow::Continue(())
@@ -318,6 +320,7 @@ impl Server {
     //     tracing::info!("Registered file watching for flake files");
     // }
 
+    #[allow(clippy::needless_pass_by_value)]
     fn on_did_open_custom(
         &mut self,
         params: lsp_ext::DidOpenTextDocumentCustomParams,
@@ -387,19 +390,19 @@ impl Server {
             match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
                 Ok(diff_result) => {
                     if diff_result.has_reportable_change() {
-                        match json3::print(&diff_result) {
-                            Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
-                            Err(err) => {
-                                tracing::error!("Failed to serialize diff result: {err}");
-                                ready(Err(ResponseError::new(
-                                    ErrorCode::INTERNAL_ERROR,
-                                    format!("Failed to serialize diff result: {err}"),
-                                )))
-                            }
-                        }
-                        // ready(Ok(Some(lsp_ext::DiffRangesResponse {
-                        //     ranges: json3::print(&diff_result),
-                        // })))
+                        ready(Ok(Some(lsp_ext::DiffRangesResponse {
+                            ranges: json3::print(&diff_result),
+                        })))
+                        // match json3::print(&diff_result) {
+                        //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
+                        //     Err(err) => {
+                        //         tracing::error!("Failed to serialize lsp_ext::DiffRangesResponse: {err}");
+                        //         ready(Err(ResponseError::new(
+                        //             ErrorCode::INTERNAL_ERROR,
+                        //             format!("Failed to serialize lsp_ext::DiffRangesResponse: {err}"),
+                        //         )))
+                        //     }
+                        // }
                     } else {
                         tracing::info!("No changes detected for path {}", rhs_path_buf.display());
                         ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
@@ -417,6 +420,8 @@ impl Server {
         // ready(Ok(Some(response)))
     }
 
+    #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::unused_self)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
         // tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);
         tracing::info!(
@@ -455,6 +460,8 @@ impl Server {
         ControlFlow::Continue(())
     }
 
+    #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::unused_self)]
     fn on_did_close(&mut self, params: DidCloseTextDocumentParams) -> NotifyResult {
         tracing::info!(
             "notif::DidCloseTextDocument with params.text_document.uri.to_file_path(): {:?}",
@@ -477,6 +484,8 @@ impl Server {
         ControlFlow::Continue(())
     }
 
+    #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::unused_self)]
     fn on_did_change(&mut self, params: DidChangeTextDocumentParams) -> NotifyResult {
         tracing::info!(
             "notif::DidChangeTextDocument - params.text_document.uri.to_file_path(): {:?} - params.text_document.version: {:?} - params.content_changes.len(): {:?}",
@@ -515,6 +524,7 @@ impl Server {
         ControlFlow::Continue(())
     }
 
+    #[allow(clippy::unused_self)]
     fn on_did_save(&mut self, _params: DidSaveTextDocumentParams) -> NotifyResult {
         tracing::info!("notif::DidSaveTextDocument");
         // As stated in https://github.com/microsoft/language-server-protocol/issues/676,
@@ -523,6 +533,7 @@ impl Server {
         ControlFlow::Continue(())
     }
 
+    #[allow(clippy::unused_self)]
     fn on_did_change_configuration(&mut self, _params: DidChangeConfigurationParams) -> NotifyResult {
         tracing::info!("notif::DidChangeConfiguration");
         // As stated in https://github.com/microsoft/language-server-protocol/issues/676,

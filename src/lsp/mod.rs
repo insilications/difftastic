@@ -1,5 +1,5 @@
 mod cache;
-pub(crate) mod custom;
+pub mod custom;
 mod lsp_ext;
 mod meter;
 mod server;

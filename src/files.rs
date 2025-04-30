@@ -27,7 +27,7 @@ use crate::{exit_codes::EXIT_BAD_ARGUMENTS, hash::DftHashSet, options::FileArgum
 /// * `Err(ResponseError)` - If any I/O error occurs during reading. The `ResponseError` will contain
 ///   `ErrorCode::INTERNAL_ERROR` and a message describing the issue (e.g., file not found, permission denied).
 #[inline]
-pub(crate) fn read_file_lsp(path: &Path) -> Result<Vec<u8>, ResponseError> {
+pub fn read_file_lsp(path: &Path) -> Result<Vec<u8>, ResponseError> {
     std::fs::read(path).map_err(|err| {
         use std::io::ErrorKind;
 

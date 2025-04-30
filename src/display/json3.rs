@@ -177,7 +177,7 @@ impl<'f> From<&'f File<'_>> for Vec<Range> {
         file.chunks
             .iter()
             .flat_map(|chunk| {
-                chunk.iter().flat_map(|line| {
+                chunk.iter().filter_map(|line| {
                     line.rhs.as_ref().map(|side| {
                         side.changes.iter().map(|change| Range {
                             start: Position::new(side.line_number, change.start),
@@ -189,6 +189,22 @@ impl<'f> From<&'f File<'_>> for Vec<Range> {
             .flatten()
             .collect()
     }
+    // fn from(file: &'f File<'_>) -> Self {
+    //     file.chunks
+    //         .iter()
+    //         .flat_map(|chunk| {
+    //             chunk.iter().flat_map(|line| {
+    //                 line.rhs.as_ref().map(|side| {
+    //                     side.changes.iter().map(|change| Range {
+    //                         start: Position::new(side.line_number, change.start),
+    //                         end: Position::new(side.line_number, change.end),
+    //                     })
+    //                 })
+    //             })
+    //         })
+    //         .flatten()
+    //         .collect()
+    // }
 }
 
 #[derive(Debug, Serialize)]
@@ -257,9 +273,10 @@ struct Change2<'c> {
 // }
 
 // pub(crate) fn print(diff: &DiffResult) -> Result<String, serde_json::Error> {
-pub(crate) fn print(diff: &DiffResult) -> Result<Vec<Range>> {
+// pub(crate) fn print(diff: &DiffResult) -> Result<Vec<Range>> {
+pub fn print(diff: &DiffResult) -> Vec<Range> {
     let file = File::from(diff);
-    Ok(Vec::from(&file))
+    Vec::from(&file)
     // let ranges = Vec::from(&file);
     // serde_json::to_string(&ranges)
 

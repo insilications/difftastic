@@ -63,6 +63,7 @@ pub trait UriExt: Sized + sealed::Sealed {
     /// Create a [`lsp_types::Uri`] from a file path.
     ///
     /// Returns `None` if the file does not exist.
+    #[allow(dead_code)]
     fn from_file_path<A: AsRef<Path>>(path: A) -> Option<Self>;
 }
 
