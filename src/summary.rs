@@ -72,6 +72,7 @@ pub(crate) struct DiffResultLsp {
     pub(crate) hunks: Vec<Hunk>,
 
     pub(crate) lhs_positions: Vec<MatchedPos>,
+    // this is likely the only necessary field related to rhs positions
     pub(crate) rhs_positions: Vec<MatchedPos>,
 
     pub(crate) has_syntactic_changes: bool,
