@@ -112,7 +112,7 @@ impl CommitId {
         self.0
             .iter()
             .take(4) // 4 × 2 hex digits = 8 chars – slice after join.
-            .flat_map(|b| format!("{:02x}", b).chars().collect::<Vec<_>>())
+            .flat_map(|b| format!("{b:02x}").chars().collect::<Vec<_>>())
             .take(7)
             .collect()
     }

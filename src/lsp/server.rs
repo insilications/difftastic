@@ -18,9 +18,8 @@ use lsp_types::{
 
 use crate::{
     diff_for_lsp,
-    display::{json3, style::BackgroundColor},
+    display::json3,
     lsp::{cache, lsp_ext, uri_ext::UriExt},
-    options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument},
 };
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
@@ -49,7 +48,7 @@ pub struct Server {
     client: ClientSocket,
     // capabilities: NegotiatedCapabilities,
     /// Messages to show once initialized.
-    init_messages: Vec<ShowMessageParams>,
+    _init_messages: Vec<ShowMessageParams>,
     cache_state: Option<cache::AppStateShared>,
     root_path: PathBuf,
 }
@@ -68,11 +67,11 @@ impl Server {
             //// Lifecycle ////
             .request::<req::Initialize, _>(Self::on_initialize)
             .notification::<notif::Initialized>(Self::on_initialized)
-            .request::<req::Shutdown, _>(|_, _| {
+            .request::<req::Shutdown, _>(|_, ()| {
                 tracing::info!("req::Shutdown");
                 ready(Ok(()))
             })
-            .notification::<notif::Exit>(|_, _| {
+            .notification::<notif::Exit>(|_, ()| {
                 tracing::info!("notif::Exit");
                 ControlFlow::Break(Ok(()))
             })
@@ -131,7 +130,7 @@ impl Server {
             client,
             // Will be set during initialization.
             // capabilities: NegotiatedCapabilities::default(),
-            init_messages,
+            _init_messages: init_messages,
             cache_state: None,
             root_path: PathBuf::new(),
         }
@@ -141,24 +140,32 @@ impl Server {
         &mut self,
         params: InitializeParams,
     ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
-        match serde_json::to_string(&params) {
-            Ok(json_params) => tracing::info!(params = %json_params, "Initialize with"),
-            Err(_) => tracing::debug!(raw_params = ?params, "Raw initialize with"),
-        };
+        if let Ok(json_params) = serde_json::to_string(&params) {
+            tracing::info!(params = %json_params, "Initialize with");
+        } else {
+            tracing::debug!(raw_params = ?params, "Raw initialize with");
+        }
 
-        self.root_path = match params
+        self.root_path = params
             .workspace_folders
             .as_ref()
             .into_iter()
             .flatten()
             .next()
-            // .and_then(|ws| Some(PathBuf::from(ws.uri.to_string())))
-            // .and_then(|ws| Some(PathBuf::from(ws.uri.path().to_string())))
             .and_then(|ws| ws.uri.to_file_path())
-        {
-            Some(path) => PathBuf::from(path),
-            None => PathBuf::from("."), // Updated to provide a default path
-        };
+            .map_or_else(|| PathBuf::from("."), PathBuf::from);
+
+        //         self.root_path = match params
+        //     .workspace_folders
+        //     .as_ref()
+        //     .into_iter()
+        //     .flatten()
+        //     .next()
+        //     .and_then(|ws| ws.uri.to_file_path())
+        // {
+        //     Some(path) => PathBuf::from(path),
+        //     None => PathBuf::from("."), // Updated to provide a default path
+        // };
 
         tracing::info!("root_path: {:?}", self.root_path.display());
 
@@ -325,7 +332,7 @@ impl Server {
             .map_err(|e| {
                 tracing::error!("Failed to strip prefix: {}", e);
                 ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
-                    ResponseError::new(ErrorCode::INTERNAL_ERROR, format!("Failed to strip prefix: {}", e)),
+                    ResponseError::new(ErrorCode::INTERNAL_ERROR, format!("Failed to strip prefix: {e}")),
                 ))
             })
             .unwrap();
@@ -341,12 +348,12 @@ impl Server {
             .cache_state
             .as_ref()
             .unwrap()
-            .populate_history(&params.rev, &relative_stripped_path)
+            .populate_history(&params.rev, relative_stripped_path)
         {
-            tracing::error!("Failed to populate history: {}", err);
+            tracing::error!("Failed to populate history: {err}");
             return ready(Err(ResponseError::new(
                 ErrorCode::INTERNAL_ERROR,
-                format!("Failed to populate history: {}", err),
+                format!("Failed to populate history: {err}"),
             )));
         }
         // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
@@ -363,7 +370,7 @@ impl Server {
             .cache_state
             .as_ref()
             .unwrap()
-            .lookup_version(&relative_stripped_path, &params.rev)
+            .lookup_version(relative_stripped_path, &params.rev)
         {
             // Arc counts inside the cloned FileVersion will reflect sharing
             tracing::info!(
@@ -383,11 +390,11 @@ impl Server {
                         match json3::print(&diff_result) {
                             Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
                             Err(err) => {
-                                tracing::error!("Failed to serialize diff result: {}", err);
-                                return ready(Err(ResponseError::new(
+                                tracing::error!("Failed to serialize diff result: {err}");
+                                ready(Err(ResponseError::new(
                                     ErrorCode::INTERNAL_ERROR,
-                                    format!("Failed to serialize diff result: {}", err),
-                                )));
+                                    format!("Failed to serialize diff result: {err}"),
+                                )))
                             }
                         }
                         // ready(Ok(Some(lsp_ext::DiffRangesResponse {
@@ -398,16 +405,14 @@ impl Server {
                         ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
                     }
                 }
-                Err(err) => {
-                    return ready(Err(err));
-                }
+                Err(err) => ready(Err(err)),
             }
         } else {
             tracing::info!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
-            return ready(Err(ResponseError::new(
+            ready(Err(ResponseError::new(
                 ErrorCode::INTERNAL_ERROR,
                 format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
-            )));
+            )))
         }
         // ready(Ok(Some(response)))
     }
@@ -450,8 +455,11 @@ impl Server {
         ControlFlow::Continue(())
     }
 
-    fn on_did_close(&mut self, _params: DidCloseTextDocumentParams) -> NotifyResult {
-        tracing::info!("notif::DidCloseTextDocument");
+    fn on_did_close(&mut self, params: DidCloseTextDocumentParams) -> NotifyResult {
+        tracing::info!(
+            "notif::DidCloseTextDocument with params.text_document.uri.to_file_path(): {:?}",
+            params.text_document.uri.to_file_path()
+        );
         // // N.B. Don't clear text here.
         // // `DidCloseTextDocument` means the client ends its maintenance to a file but
         // // not deletes it.
@@ -469,8 +477,13 @@ impl Server {
         ControlFlow::Continue(())
     }
 
-    fn on_did_change(&mut self, _params: DidChangeTextDocumentParams) -> NotifyResult {
-        tracing::info!("notif::DidChangeTextDocument");
+    fn on_did_change(&mut self, params: DidChangeTextDocumentParams) -> NotifyResult {
+        tracing::info!(
+            "notif::DidChangeTextDocument - params.text_document.uri.to_file_path(): {:?} - params.text_document.version: {:?} - params.content_changes.len(): {:?}",
+            params.text_document.uri.to_file_path(),
+            params.text_document.version,
+            params.content_changes.len()
+        );
         // let mut vfs = self.vfs.write().unwrap();
         // let uri = params.text_document.uri;
         // // Ignore files not maintained in Vfs.

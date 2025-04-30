@@ -985,7 +985,7 @@ fn diff_lsp_content(
     // println!("diff_file_content - diff_options: {:?}", diff_options);
 
     // let language = guess(Path::new(display_path), guess_src, overrides);
-    let language = LANGUAGE_MAP_FROM_LSP.get(&language_id).copied();
+    let language = LANGUAGE_MAP_FROM_LSP.get(language_id).copied();
     let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
 
     if lhs_src == rhs_src {
@@ -1193,7 +1193,7 @@ pub(crate) fn diff_for_lsp(rhs_path: &Path, lhs_src: &str, language_id: &str) ->
 
             rhs_src.retain(|c| c != '\r');
 
-            Ok(diff_lsp_content(&display_path, None, &lhs_src, &rhs_src, &language_id))
+            Ok(diff_lsp_content(&display_path, None, lhs_src, &rhs_src, language_id))
         }
         Err(err) => Err(err),
     }

@@ -3,7 +3,7 @@ use std::{
     hash::Hash,
 };
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use line_numbers::LineNumber;
 use lsp_types::{Position, Range};
 use serde::{Serialize, Serializer, ser::SerializeStruct};
@@ -247,14 +247,14 @@ struct Change2<'c> {
     highlight_type: &'c syntax::MatchKind,
 }
 
-pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
-    let files = diffs
-        .iter()
-        .map(File::from)
-        .filter(|f| print_unchanged || f.status != Status::Unchanged)
-        .collect::<Vec<File>>();
-    tracing::info!("{}", serde_json::to_string(&files).expect("failed to serialize files"));
-}
+// pub(crate) fn print_directory(diffs: Vec<DiffResult>, print_unchanged: bool) {
+//     let files = diffs
+//         .iter()
+//         .map(File::from)
+//         .filter(|f| print_unchanged || f.status != Status::Unchanged)
+//         .collect::<Vec<File>>();
+//     tracing::info!("{}", serde_json::to_string(&files).expect("failed to serialize files"));
+// }
 
 // pub(crate) fn print(diff: &DiffResult) -> Result<String, serde_json::Error> {
 pub(crate) fn print(diff: &DiffResult) -> Result<Vec<Range>> {

@@ -25,20 +25,20 @@ use tower::ServiceBuilder;
 // use crate::lsp::server::{Server, StateSnapshot};
 use crate::lsp::server::Server;
 
-/// The file length limit. Files larger than this will be rejected from all interactions.
-/// The hard limit is `u32::MAX` due to following conditions.
-/// - The parser and the `rowan` library uses `u32` based indices.
-/// - `vfs::LineMap` uses `u32` based indices.
-///
-/// Since large files can cause significant performance issues, also to
-/// be away from off-by-n errors, here's an arbitrary chosen limit: 128MiB.
-///
-/// If you have any real world usages for files larger than this, please file an issue.
+//  The file length limit. Files larger than this will be rejected from all interactions.
+//  The hard limit is `u32::MAX` due to following conditions.
+//  - The parser and the `rowan` library uses `u32` based indices.
+//  - `vfs::LineMap` uses `u32` based indices.
+
+//  Since large files can cause significant performance issues, also to
+//  be away from off-by-n errors, here's an arbitrary chosen limit: 128MiB.
+
+//  If you have any real world usages for files larger than this, please file an issue.
 // pub const MAX_FILE_LEN: usize = 128 << 20;
 
 // pub(crate) trait UrlExt: Sized {
-//     fn to_vfs_path(&self) -> VfsPath;
-//     fn from_vfs_path(path: &VfsPath) -> Self;
+// fn to_vfs_path(&self) -> VfsPath;
+// fn from_vfs_path(path: &VfsPath) -> Self;
 // }
 
 // impl UrlExt for Url {
