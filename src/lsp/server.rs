@@ -22,6 +22,8 @@ use crate::{
     lsp::{cache, lsp_ext, uri_ext::UriExt},
 };
 
+struct UpdateConfigEvent(serde_json::Value);
+
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
 
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
@@ -156,19 +158,14 @@ impl Server {
             .and_then(|ws| ws.uri.to_file_path())
             .map_or_else(|| PathBuf::from("."), PathBuf::from);
 
-        //         self.root_path = match params
-        //     .workspace_folders
-        //     .as_ref()
-        //     .into_iter()
-        //     .flatten()
-        //     .next()
-        //     .and_then(|ws| ws.uri.to_file_path())
-        // {
-        //     Some(path) => PathBuf::from(path),
-        //     None => PathBuf::from("."), // Updated to provide a default path
-        // };
-
         tracing::info!("root_path: {:?}", self.root_path.display());
+
+        if let Some(options) = params.initialization_options {
+            if options.as_object().filter(|o| !o.is_empty()).is_some() {
+                tracing::debug!("Initialization options: {options}");
+                let _ = self.on_update_config(UpdateConfigEvent(options));
+            }
+        }
 
         self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
 
@@ -244,6 +241,12 @@ impl Server {
         //         version: option_env!("CFG_RELEASE").map(Into::into),
         //     }),
         // }))
+    }
+
+    fn on_update_config(&mut self, value: UpdateConfigEvent) -> NotifyResult {
+        let kk = value.0;
+        // tracing::debug!("Initialization options: {options}");
+        ControlFlow::Continue(())
     }
 
     #[allow(clippy::unused_self)]
