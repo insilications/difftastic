@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use phf::phf_map;
-use serde_json::Value;
 
 pub const WORKSPACE_CONFIG_KEY: &str = "blameHighlightingSettings";
 
@@ -94,7 +93,7 @@ macro_rules! define_config {
         $self:ident, $raw:expr, $errs:ident, $ptr:expr,
         $field:ident, $field_ty:ty, $parse:path
     ) => {{
-        match ::serde_json::from_value::<String>($raw) {        // force String
+        match serde_json::from_value::<String>($raw) {        // force String
             Ok(s)  => match $parse($self, &s) {                 // borrow it
                 Ok(v)  => $self.$field = v,
                 Err(e) => $errs.push(format!(
@@ -114,7 +113,7 @@ macro_rules! define_config {
         $self:ident, $raw:expr, $errs:ident, $ptr:expr,
         $field:ident, $field_ty:ty
     ) => {{
-        match ::serde_json::from_value::<$field_ty>($raw) {
+        match serde_json::from_value::<$field_ty>($raw) {
             Ok(v)  => $self.$field = v,
             Err(e) => $errs.push(format!(
                 "failed to deserialize `{}`: {e}",
