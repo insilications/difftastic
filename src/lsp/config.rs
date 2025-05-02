@@ -5,7 +5,7 @@ use phf::phf_map;
 
 pub const WORKSPACE_CONFIG_KEY: &str = "blameHighlightingSettings";
 
-/// Your log‐level enum; still `Default` ⇒ `Info`.
+/// The LSP Server log level enum. Defaults to `LspLogLevel::Info`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LspLogLevel {
     Debug,
@@ -35,7 +35,7 @@ macro_rules! define_config {
         $vis:vis struct $config:ident {
             $(
               // If you wrote #[parse(...)] then we capture:
-              $(#[parse($pointer:literal $(, default = $default:expr)? $(, parse = $parse:path)?)])?
+              $(#[parse($pointer:literal, raw = $raw_ty:ty $(, default = $default:expr)? $(, parse = $parse:path)?)])?
               $field_vis:vis $field:ident : $field_ty:ty,
             )*
         }
@@ -61,8 +61,6 @@ macro_rules! define_config {
                 }
             }
 
-            /* ------------------- update ----------------------- */
-
             pub fn update(&mut self,
                           mut v: serde_json::Value,
                           errors: &mut Vec<String>)
@@ -72,9 +70,7 @@ macro_rules! define_config {
                         if let Some(slot) = v.pointer_mut($pointer) {
                             let raw = slot.take();
                             define_config!(
-                                @apply_parse
-                                    self, raw, errors, $pointer,
-                                    $field, $field_ty $(, $parse)?
+                                @apply_parse self, raw, errors, $pointer, $field, $raw_ty $(, $parse)?
                             );
                         }
                     )?
@@ -85,16 +81,16 @@ macro_rules! define_config {
 
     // Helpers
 
-  (@default) => { Default::default() };
-  (@default $expr:expr) => { $expr };
+    (@default) => { Default::default() };
+    (@default $expr:expr) => { $expr };
 
-    /* … field has a custom parser … */
+    // Field has custom parser defined by $parse.
     (@apply_parse
         $self:ident, $raw:expr, $errs:ident, $ptr:expr,
-        $field:ident, $field_ty:ty, $parse:path
+        $field:ident, $raw_ty:ty, $parse:path
     ) => {{
-        match serde_json::from_value::<String>($raw) {        // force String
-            Ok(s)  => match $parse($self, &s) {                 // borrow it
+        match serde_json::from_value::<$raw_ty>($raw) {
+            Ok(s)  => match $parse($self, &s) {
                 Ok(v)  => $self.$field = v,
                 Err(e) => $errs.push(format!(
                     "invalid value for `{}`: {e}",
@@ -108,12 +104,12 @@ macro_rules! define_config {
         }
     }};
 
-    /* … plain assignment, no parser … */
+    // Field has no custom parser, use direct assignment.
     (@apply_parse
         $self:ident, $raw:expr, $errs:ident, $ptr:expr,
-        $field:ident, $field_ty:ty
+        $field:ident, $raw_ty:ty
     ) => {{
-        match serde_json::from_value::<$field_ty>($raw) {
+        match serde_json::from_value::<$raw_ty>($raw) {
             Ok(v)  => $self.$field = v,
             Err(e) => $errs.push(format!(
                 "failed to deserialize `{}`: {e}",
@@ -137,26 +133,22 @@ macro_rules! define_config {
 pub struct Config {
     pub root_path: PathBuf,
 
-    #[parse("/blameHighlightingSettings/blameHighlightingOnChange", default = 1000)]
+    #[parse("/blameHighlightingSettings/blameHighlightingOnChange", raw = u32, default = 1000)]
     pub blame_highlighting_on_change: u32,
 
-    #[parse("/blameHighlightingSettings/blameHighlightingParentLevel", default = 1)]
+    #[parse("/blameHighlightingSettings/blameHighlightingParentLevel", raw = u32, default = 1)]
     pub blame_highlighting_parent_level: u32,
 
-    // No custom parser, no default. `bool::default()` already returns false.
-    #[parse("/blameHighlightingSettings/blameHighlightingShowStatus")]
+    #[parse("/blameHighlightingSettings/blameHighlightingShowStatus", raw = bool)]
     pub blame_highlighting_show_status: bool,
 
-    #[parse("/blameHighlightingSettings/blameHighlightingLogLevel", default = LspLogLevel::Info, parse = Config::log_level_from_str)]
+    #[parse("/blameHighlightingSettings/blameHighlightingLogLevel", raw = String, default = LspLogLevel::Info, parse = Config::lsp_log_level_from_str)]
     pub blame_highlighting_log_level: LspLogLevel,
 }
 
 impl Config {
-    /// Parse a `&str` into an `LspLogLevel`.
-    ///
-    /// Accepts a *borrow* only; we do not need to own the intermediate
-    /// `String` that `serde_json` produced.
-    fn log_level_from_str(&self, v: &str) -> Result<LspLogLevel, String> {
+    /// Returns `Result<Field, String>`, so our macro can match on Err(msg) and push it into `errors`.
+    fn lsp_log_level_from_str(&self, v: &str) -> Result<LspLogLevel, String> {
         LSP_LOG_LEVEL_FROM_STRING
             .get(v)
             .copied()
