@@ -19,7 +19,7 @@ use lsp_types::{
 use crate::{
     diff_for_lsp,
     display::json3::diffresult_to_ranges,
-    lsp::{cache, config, lsp_ext, uri_ext::UriExt},
+    lsp::{cache, config, config::WORKSPACE_CONFIG_KEY, lsp_ext, uri_ext::UriExt},
 };
 
 struct UpdateConfigEvent(serde_json::Value);

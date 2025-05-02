@@ -607,9 +607,7 @@ fn from_glob(path: &Path) -> Option<Language> {
     }
 }
 
-/// Compile-time mapping from the “language id” strings shown in the
-/// <language_strings> markdown table to the corresponding enum
-/// variants.  Repeated `=>` lines are aliases.
+/// Repeated `=>` lines are aliases.
 pub(crate) static LANGUAGE_MAP_FROM_LSP: phf::Map<&'static str, Language> = phf_map! {
     // ─── one-to-one or obvious aliases ──────────────────────────────
     "ada"              => Language::Ada,
