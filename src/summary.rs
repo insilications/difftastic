@@ -80,7 +80,7 @@ pub(crate) struct DiffResultLsp {
 
 impl DiffResultLsp {
     #[inline]
-    pub(crate) fn has_reportable_change(&self) -> bool {
+    pub(crate) const fn has_reportable_change(&self) -> bool {
         self.has_syntactic_changes
     }
 }
