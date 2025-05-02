@@ -1,4 +1,5 @@
 mod cache;
+mod config;
 pub mod custom;
 mod lsp_ext;
 mod meter;

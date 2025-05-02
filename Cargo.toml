@@ -148,6 +148,7 @@ anyhow = "1.0.98"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 git2 = { version = "0.20.1", features = ["vendored-libgit2"] }
 phf = { version = "0.11.3", features = ["macros"] }
+macro_rules_attribute = "0.2.0"
 
 [dev-dependencies]
 async-io = "2.4.0"
