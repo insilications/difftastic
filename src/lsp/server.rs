@@ -184,7 +184,7 @@ impl Server {
                 position_encoding: Some(PositionEncodingKind::UTF16),
                 text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
                     open_close: Some(true),
-                    change: Some(TextDocumentSyncKind::NONE),
+                    change: Some(TextDocumentSyncKind::INCREMENTAL),
                     will_save: None,
                     will_save_wait_until: None,
                     // save: Some(TextDocumentSyncSaveOptions::Supported(true)),
@@ -335,7 +335,7 @@ impl Server {
             .map_err(|e| {
                 tracing::error!("Failed to strip prefix: {}", e);
                 ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
-                    ResponseError::new(ErrorCode::INTERNAL_ERROR, format!("Failed to strip prefix: {e}")),
+                    ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {e}")),
                 ))
             })
             .unwrap();
@@ -355,7 +355,7 @@ impl Server {
         {
             tracing::error!("Failed to populate history: {err}");
             return ready(Err(ResponseError::new(
-                ErrorCode::INTERNAL_ERROR,
+                ErrorCode::REQUEST_FAILED,
                 format!("Failed to populate history: {err}"),
             )));
         }
@@ -413,7 +413,7 @@ impl Server {
         } else {
             tracing::info!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
             ready(Err(ResponseError::new(
-                ErrorCode::INTERNAL_ERROR,
+                ErrorCode::REQUEST_FAILED,
                 format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
             )))
         }
@@ -423,10 +423,10 @@ impl Server {
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
-        // tracing::info!("notif::DidOpenTextDocument with params: {:?}", params);
         tracing::info!(
-            "notif::DidOpenTextDocument with params.text_document.uri.to_file_path(): {:?}",
-            params.text_document.uri.to_file_path()
+            "notif::DidOpenTextDocument - params.text_document.uri.to_file_path(): {:?} - params.text_document.version: {:?}",
+            params.text_document.uri.to_file_path(),
+            params.text_document.version
         );
         //     // // Ignore the open event for unsupported files, thus all following interactions
         //     // // will error due to unopened files.

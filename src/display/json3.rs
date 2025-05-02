@@ -11,7 +11,7 @@ pub fn diffresult_to_ranges(summary: &DiffResultLsp) -> Vec<Range> {
         return Vec::new();
     }
 
-    // 1) Bucket only the novel spans by line.  No MatchKind clones!
+    // 1) Bucket only the novel spans by line.  No `MatchKind` clones!
     let mut by_line: HashMap<u32, Vec<(bool, u32, u32)>> = HashMap::with_capacity(summary.rhs_positions.len());
     for m in &summary.rhs_positions {
         if m.kind.is_novel() {
@@ -28,7 +28,8 @@ pub fn diffresult_to_ranges(summary: &DiffResultLsp) -> Vec<Range> {
     let mut lines: Vec<(u32, Vec<(bool, u32, u32)>)> = by_line.into_iter().collect();
     lines.sort_unstable_by_key(|&(ln, _)| ln);
 
-    // 3) For each line, sort its spans by start_col, then walk once merging *only* consecutive `Novel` spans.
+    // 3) For each line, sort its spans by start_col, then walk once merging *only* consecutive `MatchKind::Novel`
+    //    spans.
     let mut ranges = Vec::with_capacity(summary.rhs_positions.len()); // upper bound
 
     for (ln, mut spans) in lines {
@@ -40,7 +41,7 @@ pub fn diffresult_to_ranges(summary: &DiffResultLsp) -> Vec<Range> {
             i += 1;
 
             if is_novel {
-                // merge all *consecutive* Novel spans
+                // Merge all *consecutive* MatchKind::Novel spans
                 while i < spans.len() && spans[i].0 {
                     end = end.max(spans[i].2);
                     i += 1;
