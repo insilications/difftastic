@@ -1,11 +1,10 @@
-use std::path::PathBuf;
+use std::{convert::TryFrom, path::PathBuf};
 
-use anyhow::Result;
 use phf::phf_map;
+use serde_json::Value;
 
 pub const WORKSPACE_CONFIG_KEY: &str = "blameHighlightingSettings";
 
-/// The LSP Server log level enum. Defaults to `LspLogLevel::Info`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LspLogLevel {
     Debug,
@@ -15,7 +14,6 @@ pub enum LspLogLevel {
     Error,
 }
 
-/// A perfect‐hash map from strings → enum.
 pub static LSP_LOG_LEVEL_FROM_STRING: phf::Map<&'static str, LspLogLevel> = phf_map! {
     "Debug"   => LspLogLevel::Debug,
     "Info"    => LspLogLevel::Info,
@@ -23,135 +21,146 @@ pub static LSP_LOG_LEVEL_FROM_STRING: phf::Map<&'static str, LspLogLevel> = phf_
     "Error"   => LspLogLevel::Error,
 };
 
-/// # A macro that:
-/// 1. Defines your struct with its fields and defaults in `new`.
-/// 2. Generates an `update(&mut self, mut v: Value, errors: &mut Vec<String>)` which:
-///    + walks each JSON pointer you declared.
-///    + attempts `serde_json::from_value(...)` – on success, either runs your custom parser or else assigns directly.
-///    + on *any* error, pushes a `(pointer, message)` into `errors`.
-macro_rules! define_config {
-    (
-        $(#[$meta:meta])*
-        $vis:vis struct $config:ident {
-            $(
-              // If you wrote #[parse(...)] then we capture:
-              $(#[parse($pointer:literal, raw = $raw_ty:ty $(, default = $default:expr)? $(, parse = $parse:path)?)])?
-              $field_vis:vis $field:ident : $field_ty:ty,
-            )*
-        }
-    ) => {
-        // 1) The struct itself
-        $(#[$meta])*
-        $vis struct $config {
-            $(
-            $field_vis $field : $field_ty,
-            )*
-        }
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub root_path: PathBuf,
+    pub blame_highlighting_on_change: u32,
+    pub blame_highlighting_parent_level: u32,
+    pub blame_highlighting_show_status: bool,
+    pub blame_highlighting_log_level: LspLogLevel,
+}
 
-        impl $config {
-            pub fn new(root_path: std::path::PathBuf) -> Self {
-                assert!(root_path.is_absolute());
-                Self {
-                    root_path,
-                    $(
-                        $(
-                            $field : define_config!(@default $($default)?),
-                        )?
-                    )*
-                }
+// ----------------------------------------------------------------
+// recursive helper macro: handles one field per arm, then recurses.
+// ----------------------------------------------------------------
+macro_rules! parse_config_obj {
+    // u32‐case, with trailing comma + more fields
+    ($self:ident, $obj:ident, $errs:ident, $disp:expr,
+     $field:ident : u32 => $key:expr , $($rest:tt)* ) => {
+        if let Some(raw) = $obj.get($key) {
+            match raw.as_u64().and_then(|n| u32::try_from(n).ok()) {
+                Some(v) => $self.$field = v,
+                None    => $errs.push(
+                    format!("invalid integer for `{}.{} `", $disp, $key)
+                ),
             }
+        }
+        parse_config_obj!($self, $obj, $errs, $disp, $($rest)*);
+    };
 
-            pub fn update(&mut self,
-                          mut v: serde_json::Value,
-                          errors: &mut Vec<String>)
-            {
-                $(
-                    $(
-                        if let Some(slot) = v.pointer_mut($pointer) {
-                            let raw = slot.take();
-                            define_config!(
-                                @apply_parse self, raw, errors, $pointer, $field, $raw_ty $(, $parse)?
-                            );
-                        }
-                    )?
-                )*
+    // bool‐case, with trailing comma + more fields
+    ($self:ident, $obj:ident, $errs:ident, $disp:expr,
+     $field:ident : bool => $key:expr , $($rest:tt)* ) => {
+        if let Some(raw) = $obj.get($key) {
+            match raw.as_bool() {
+                Some(v) => $self.$field = v,
+                None    => $errs.push(
+                    format!("invalid boolean for `{}.{} `", $disp, $key)
+                ),
+            }
+        }
+        parse_config_obj!($self, $obj, $errs, $disp, $($rest)*);
+    };
+
+    // enum‐case, with trailing comma + more fields
+    ($self:ident, $obj:ident, $errs:ident, $disp:expr,
+     $field:ident : enum($map:expr, $msg:expr) => $key:expr , $($rest:tt)* ) => {
+        if let Some(raw) = $obj.get($key) {
+            if let Some(s) = raw.as_str() {
+                match $map.get(s).copied() {
+                    Some(v) => $self.$field = v,
+                    None    => $errs.push(
+                        format!("{} `{}` for `{}.{} `", $msg, s, $disp, $key)
+                    ),
+                }
+            } else {
+                $errs.push(
+                    format!("invalid string for `{}.{} `", $disp, $key)
+                );
+            }
+        }
+        parse_config_obj!($self, $obj, $errs, $disp, $($rest)*);
+    };
+
+    // last u32‐case (no trailing comma)
+    ($self:ident, $obj:ident, $errs:ident, $disp:expr,
+     $field:ident : u32 => $key:expr ) => {
+        if let Some(raw) = $obj.get($key) {
+            match raw.as_u64().and_then(|n| u32::try_from(n).ok()) {
+                Some(v) => $self.$field = v,
+                None    => $errs.push(
+                    format!("invalid integer for `{}.{} `", $disp, $key)
+                ),
             }
         }
     };
 
-    // Helpers
-
-    (@default) => { Default::default() };
-    (@default $expr:expr) => { $expr };
-
-    // Field has custom parser defined by $parse.
-    (@apply_parse
-        $self:ident, $raw:expr, $errs:ident, $ptr:expr,
-        $field:ident, $raw_ty:ty, $parse:path
-    ) => {{
-        match serde_json::from_value::<$raw_ty>($raw) {
-            Ok(s)  => match $parse($self, &s) {
-                Ok(v)  => $self.$field = v,
-                Err(e) => $errs.push(format!(
-                    "invalid value for `{}`: {e}",
-                    $ptr.trim_start_matches('/').replace('/', "."),
-                )),
-            },
-            Err(e) => $errs.push(format!(
-                "failed to deserialize `{}`: {e}",
-                $ptr.trim_start_matches('/').replace('/', "."),
-            )),
+    // last bool
+    ($self:ident, $obj:ident, $errs:ident, $disp:expr,
+     $field:ident : bool => $key:expr ) => {
+        if let Some(raw) = $obj.get($key) {
+            match raw.as_bool() {
+                Some(v) => $self.$field = v,
+                None    => $errs.push(
+                    format!("invalid boolean for `{}.{} `", $disp, $key)
+                ),
+            }
         }
-    }};
+    };
 
-    // Field has no custom parser, use direct assignment.
-    (@apply_parse
-        $self:ident, $raw:expr, $errs:ident, $ptr:expr,
-        $field:ident, $raw_ty:ty
-    ) => {{
-        match serde_json::from_value::<$raw_ty>($raw) {
-            Ok(v)  => $self.$field = v,
-            Err(e) => $errs.push(format!(
-                "failed to deserialize `{}`: {e}",
-                $ptr.trim_start_matches('/').replace('/', "."),
-            )),
+    // last enum
+    ($self:ident, $obj:ident, $errs:ident, $disp:expr,
+     $field:ident : enum($map:expr, $msg:expr) => $key:expr ) => {
+        if let Some(raw) = $obj.get($key) {
+            if let Some(s) = raw.as_str() {
+                match $map.get(s).copied() {
+                    Some(v) => $self.$field = v,
+                    None    => $errs.push(
+                        format!("{} `{}` for `{}.{} `", $msg, s, $disp, $key)
+                    ),
+                }
+            } else {
+                $errs.push(
+                    format!("invalid string for `{}.{} `", $disp, $key)
+                );
+            }
         }
-    }};
-}
+    };
 
-// {
-//   "blameHighlightingSettings": {
-//     "blameHighlightingOnChange": 1000,
-//     "blameHighlightingParentLevel": "1",
-//     "blameHighlightingShowStatus": true,
-//     "blameHighlightinglogLevel": "Info"
-//   }
-// }
-
-#[macro_rules_attribute::apply(define_config!)]
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub root_path: PathBuf,
-
-    #[parse("/blameHighlightingSettings/blameHighlightingOnChange", raw = u32, default = 1000)]
-    pub blame_highlighting_on_change: u32,
-
-    #[parse("/blameHighlightingSettings/blameHighlightingParentLevel", raw = u32, default = 1)]
-    pub blame_highlighting_parent_level: u32,
-
-    #[parse("/blameHighlightingSettings/blameHighlightingShowStatus", raw = bool)]
-    pub blame_highlighting_show_status: bool,
-
-    #[parse("/blameHighlightingSettings/blameHighlightingLogLevel", raw = String, default = LspLogLevel::Info, parse = Config::lsp_log_level_from_str)]
-    pub blame_highlighting_log_level: LspLogLevel,
+    // done
+    ($self:ident, $obj:ident, $errs:ident, $disp:expr,) => {};
 }
 
 impl Config {
-    /// Returns `Result<Field, String>`, so our macro can match on Err(msg) and push it into `errors`.
-    fn lsp_log_level_from_str(&self, v: &str) -> Result<LspLogLevel, String> {
-        LSP_LOG_LEVEL_FROM_STRING
-            .get(v)
-            .copied()
-            .ok_or_else(|| format!("unrecognized logLevel `{v}`"))
+    pub fn new(root_path: PathBuf) -> Self {
+        assert!(root_path.is_absolute());
+        Config {
+            root_path,
+            blame_highlighting_on_change: 1000,
+            blame_highlighting_parent_level: 1,
+            blame_highlighting_show_status: Default::default(),
+            blame_highlighting_log_level: LspLogLevel::default(),
+        }
+    }
+
+    pub fn update(&mut self, settings: &Value, errors: &mut Vec<String>) {
+        const JSON_PREFIX: &str = "/blameHighlightingSettings";
+        const DISP_PREFIX: &str = "blameHighlightingSettings";
+
+        // 1) Only one JSON‐pointer walk
+        let obj: &serde_json::Map<String, Value> = match settings.pointer(JSON_PREFIX).and_then(Value::as_object) {
+            Some(o) => o,
+            None => return,
+        };
+
+        // 2) Munch through each field.  Add a new line here to add a new field.
+        parse_config_obj!(self, obj, errors, DISP_PREFIX,
+            blame_highlighting_on_change    : u32  => "blameHighlightingOnChange",
+            blame_highlighting_parent_level : u32  => "blameHighlightingParentLevel",
+            blame_highlighting_show_status  : bool => "blameHighlightingShowStatus",
+            blame_highlighting_log_level    :
+                enum(LSP_LOG_LEVEL_FROM_STRING, "unrecognized logLevel")
+                                             => "blameHighlightingLogLevel",
+        );
     }
 }
