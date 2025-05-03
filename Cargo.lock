@@ -538,6 +538,7 @@ dependencies = [
  "rustix 1.0.5",
  "serde",
  "serde_json",
+ "slab",
  "smallvec",
  "streaming-iterator",
  "strsim 0.10.0",

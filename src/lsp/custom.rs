@@ -72,8 +72,6 @@ pub async fn run_server_stdio() -> Result<()> {
     };
     tracing::info!("Max concurrent requests: {concurrency}");
 
-    let init_messages: Vec<ShowMessageParams> = Vec::new();
-
     // let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
     // let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
     // Prefer truly asynchronous piped stdin/stdout without blocking tasks.
@@ -104,7 +102,7 @@ pub async fn run_server_stdio() -> Result<()> {
             // TODO: Use `CatchUnwindLayer`.
             .layer(ConcurrencyLayer::new(concurrency))
             .layer(ClientProcessMonitorLayer::new(client.clone()))
-            .service(Server::new_router(client, init_messages))
+            .service(Server::new_router(client))
     });
 
     Ok(mainloop.run_buffered(stdin, stdout).await?)
