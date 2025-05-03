@@ -147,6 +147,19 @@ impl Server {
     #[allow(clippy::unused_self)]
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
         tracing::info!("notif::Initialized");
+
+        if self.capabilities.workspace_configuration {
+            tokio::spawn({
+                let config = self.config.clone();
+                let caps = self.capabilities.clone();
+                let mut client = self.client.clone();
+                async move {
+                    Self::register_watched_files(&config, &caps, &mut client).await;
+                    let _: Result<_, _> = client.emit(flake_files_changed_event);
+                }
+            });
+        }
+
         ControlFlow::Continue(())
     }
 
@@ -348,5 +361,39 @@ impl Server {
         }
 
         ControlFlow::Continue(())
+    }
+
+    async fn register_did_change_configuration(
+        config: &Config,
+        caps: &NegotiatedCapabilities,
+        client: &mut ClientSocket,
+    ) {
+        let to_watcher = |pat: &str| FileSystemWatcher {
+            glob_pattern: if caps.watch_files_relative_pattern {
+                let root_uri = Url::from_file_path(&config.root_path).expect("Must be absolute");
+                GlobPattern::Relative(RelativePattern {
+                    base_uri: OneOf::Right(root_uri),
+                    pattern: pat.into(),
+                })
+            } else {
+                GlobPattern::String(format!("{}/{}", config.root_path.display(), pat))
+            },
+            // All events.
+            kind: None,
+        };
+        let register_options = DidChangeWatchedFilesRegistrationOptions {
+            watchers: [FLAKE_LOCK_FILE, FLAKE_FILE].map(to_watcher).into(),
+        };
+        let params = RegistrationParams {
+            registrations: vec![Registration {
+                id: notif::DidChangeWatchedFiles::METHOD.into(),
+                method: notif::DidChangeWatchedFiles::METHOD.into(),
+                register_options: Some(serde_json::to_value(register_options).unwrap()),
+            }],
+        };
+        if let Err(err) = client.register_capability(params).await {
+            client.show_message_ext(MessageType::ERROR, format!("Failed to watch flake files: {err:#}"));
+        }
+        tracing::info!("Registered file watching for flake files");
     }
 }
