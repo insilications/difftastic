@@ -9,17 +9,21 @@ use anyhow::Result;
 use async_lsp::{ClientSocket, ErrorCode, ResponseError, router::Router};
 use lsp_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, PositionEncodingKind,
-    SaveOptions, ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkspaceFoldersServerCapabilities,
-    WorkspaceServerCapabilities, notification as notif,
+    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, ServerInfo,
+    notification as notif,
     request::{self as req},
 };
 
 use crate::{
     diff_for_lsp,
     display::json3::diffresult_to_ranges,
-    lsp::{cache, config::Config, lsp_ext, uri_ext::UriExt},
+    lsp::{
+        cache,
+        capabilities::{NegotiatedCapabilities, negotiate_capabilities},
+        config::Config,
+        lsp_ext,
+        uri_ext::UriExt,
+    },
 };
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
@@ -34,6 +38,7 @@ pub struct Server {
     config: Arc<Config>,
     cache_state: Option<cache::AppStateShared>,
     root_path: PathBuf,
+    capabilities: NegotiatedCapabilities,
 }
 
 impl Server {
@@ -70,6 +75,7 @@ impl Server {
             client,
             cache_state: None,
             root_path: PathBuf::new(),
+            capabilities: NegotiatedCapabilities::default(),
         }
     }
 
@@ -83,6 +89,9 @@ impl Server {
         } else {
             tracing::debug!(raw_params = ?params, "Raw initialize with");
         }
+
+        let (server_caps, final_caps) = negotiate_capabilities(&params);
+        self.capabilities = final_caps;
 
         let root_path = params
             .workspace_folders
@@ -128,30 +137,7 @@ impl Server {
         self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
 
         ready(Ok(InitializeResult {
-            capabilities: ServerCapabilities {
-                workspace: Some(WorkspaceServerCapabilities {
-                    workspace_folders: Some(WorkspaceFoldersServerCapabilities {
-                        supported: Some(true),
-                        change_notifications: None,
-                    }),
-                    file_operations: None,
-                }),
-                position_encoding: Some(PositionEncodingKind::UTF16),
-                text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
-                    open_close: Some(true),
-                    change: Some(TextDocumentSyncKind::INCREMENTAL),
-                    will_save: None,
-                    will_save_wait_until: None,
-                    // save: Some(TextDocumentSyncSaveOptions::Supported(true)),
-                    save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
-                        include_text: Some(false),
-                    })),
-                })),
-                experimental: Some(serde_json::json!({
-                    "diff": true,
-                })),
-                ..ServerCapabilities::default()
-            },
+            capabilities: server_caps,
             server_info: Some(ServerInfo {
                 name: LSP_SERVER_NAME.into(),
                 version: Some(LSP_SERVER_VERSION.into()),
