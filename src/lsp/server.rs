@@ -19,7 +19,12 @@ use lsp_types::{
 use crate::{
     diff_for_lsp,
     display::json3::diffresult_to_ranges,
-    lsp::{cache, config, config::WORKSPACE_CONFIG_KEY, lsp_ext, uri_ext::UriExt},
+    lsp::{
+        cache,
+        config::{Config, WORKSPACE_CONFIG_KEY},
+        lsp_ext,
+        uri_ext::UriExt,
+    },
 };
 
 struct UpdateConfigEvent(serde_json::Value);
@@ -35,7 +40,7 @@ pub struct Server {
     // host: AnalysisHost,
     // vfs: Arc<RwLock<Vfs>>,
     // opened_files: HashMap<Url, FileData>,
-    // config: Arc<Config>,
+    config: Arc<Config>,
     /// Tried to load flake?
     /// This is used to reload flake only once after the configuration is first loaded.
     // tried_flake_load: bool,
@@ -123,7 +128,7 @@ impl Server {
             // vfs: Arc::new(RwLock::new(Vfs::new())),
             // opened_files: HashMap::default(),
             // Will be set during initialization.
-            // config: Arc::new(Config::new("/non-existing-path".into())),
+            config: Arc::new(Config::new("/non-existing-path".into())),
             // tried_flake_load: false,
             // workspace_is_flake: false,
             // diagnostic_version: 0,
@@ -149,6 +154,15 @@ impl Server {
             tracing::debug!(raw_params = ?params, "Raw initialize with");
         }
 
+        let root_path = params
+            .workspace_folders
+            .as_ref()
+            .into_iter()
+            .flatten()
+            .next()
+            .and_then(|ws| ws.uri.to_file_path())
+            .map_or_else(|| PathBuf::from("."), PathBuf::from);
+
         self.root_path = params
             .workspace_folders
             .as_ref()
@@ -160,10 +174,25 @@ impl Server {
 
         tracing::info!("root_path: {:?}", self.root_path.display());
 
+        *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
+
         if let Some(options) = params.initialization_options {
             if options.as_object().filter(|o| !o.is_empty()).is_some() {
                 tracing::debug!("Initialization options: {options}");
-                let _ = self.on_update_config(UpdateConfigEvent(options));
+                // let _ = self.on_update_config(UpdateConfigEvent(options));
+                let mut config = Config::clone(&self.config);
+                let mut errors = Vec::new();
+                config.update(&options, &mut errors);
+
+                if errors.is_empty() {
+                    self.config = Arc::new(config);
+                } else {
+                    let msg = std::iter::once("Failed to apply some settings:")
+                        .chain(errors.iter().flat_map(|s| ["\n- ", s]))
+                        .collect::<String>();
+                    tracing::error!("{}", msg);
+                    // self.client.show_message_ext(MessageType::ERROR, msg);
+                }
             }
         }
 

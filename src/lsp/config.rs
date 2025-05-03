@@ -1,7 +1,6 @@
 use std::{convert::TryFrom, path::PathBuf};
 
 use phf::phf_map;
-use serde_json::Value;
 
 pub const WORKSPACE_CONFIG_KEY: &str = "blameHighlightingSettings";
 
@@ -134,7 +133,7 @@ macro_rules! parse_config_obj {
 impl Config {
     pub fn new(root_path: PathBuf) -> Self {
         assert!(root_path.is_absolute());
-        Config {
+        Self {
             root_path,
             blame_highlighting_on_change: 1000,
             blame_highlighting_parent_level: 1,
@@ -143,15 +142,16 @@ impl Config {
         }
     }
 
-    pub fn update(&mut self, settings: &Value, errors: &mut Vec<String>) {
+    pub fn update(&mut self, settings: &serde_json::Value, errors: &mut Vec<String>) {
         const JSON_PREFIX: &str = "/blameHighlightingSettings";
         const DISP_PREFIX: &str = "blameHighlightingSettings";
 
         // 1) Only one JSON‐pointer walk
-        let obj: &serde_json::Map<String, Value> = match settings.pointer(JSON_PREFIX).and_then(Value::as_object) {
-            Some(o) => o,
-            None => return,
-        };
+        let obj: &serde_json::Map<String, serde_json::Value> =
+            match settings.pointer(JSON_PREFIX).and_then(serde_json::Value::as_object) {
+                Some(o) => o,
+                None => return,
+            };
 
         // 2) Munch through each field.  Add a new line here to add a new field.
         parse_config_obj!(self, obj, errors, DISP_PREFIX,
