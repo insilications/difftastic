@@ -2,7 +2,7 @@ use std::{convert::TryFrom, path::PathBuf};
 
 use phf::phf_map;
 
-pub const WORKSPACE_CONFIG_KEY: &str = "blameHighlightingSettings";
+pub const WORKSPACE_CONFIG_KEY: &str = "typescriptExplicitTypes";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LspLogLevel {
@@ -146,12 +146,23 @@ impl Config {
         const JSON_PREFIX: &str = "/blameHighlightingSettings";
         const DISP_PREFIX: &str = "blameHighlightingSettings";
 
+        let obj = if let Some(obj) = settings.as_object() {
+            obj
+        } else {
+            errors.push(format!("`{}` is not an object", DISP_PREFIX));
+            return; // Exit the function early if we don't have an object
+        };
+
+        // let obj = settings.as_object().unwrap_or_else(|| {
+        //     errors.push(format!("`{}` is not an object", DISP_PREFIX));
+        //     let m = Map::new();
+        // });
         // 1) Only one JSON‐pointer walk
-        let obj: &serde_json::Map<String, serde_json::Value> =
-            match settings.pointer(JSON_PREFIX).and_then(serde_json::Value::as_object) {
-                Some(o) => o,
-                None => return,
-            };
+        // let obj: &serde_json::Map<String, serde_json::Value> =
+        //     match settings.pointer(JSON_PREFIX).and_then(serde_json::Value::as_object) {
+        //         Some(o) => o,
+        //         None => return,
+        //     };
 
         // 2) Munch through each field.  Add a new line here to add a new field.
         parse_config_obj!(self, obj, errors, DISP_PREFIX,

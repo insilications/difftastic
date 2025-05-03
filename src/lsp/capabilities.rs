@@ -3,6 +3,7 @@ use lsp_types::{
     TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
+use serde::Serialize;
 
 macro_rules! test {
     ($lhs:ident $(.$field:ident)*) => {
@@ -26,7 +27,6 @@ pub fn negotiate_capabilities(init_params: &InitializeParams) -> (ServerCapabili
         ),
         server_initiated_progress: test!(client_caps.window.work_done_progress),
         watch_files: test!(client_caps.workspace.did_change_watched_files.dynamic_registration),
-        // Workaround: https://github.com/neovim/neovim/issues/23380
         watch_files_relative_pattern: test!(client_caps.workspace.did_change_watched_files.relative_pattern_support),
         workspace_configuration: test!(client_caps.workspace.configuration),
     };
@@ -59,7 +59,7 @@ pub fn negotiate_capabilities(init_params: &InitializeParams) -> (ServerCapabili
     (server_caps, final_caps)
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct NegotiatedCapabilities {
     pub client_show_message_request: bool,

@@ -14,6 +14,7 @@ use lsp_types::{
     notification::Notification,
     request::{self as req, Request},
 };
+use serde_json::{Map, Value};
 
 use crate::{
     diff_for_lsp,
@@ -97,15 +98,6 @@ impl Server {
         let (server_caps, final_caps) = negotiate_capabilities(&params);
         self.capabilities = final_caps;
 
-        let root_path = params
-            .workspace_folders
-            .as_ref()
-            .into_iter()
-            .flatten()
-            .next()
-            .and_then(|ws| ws.uri.to_file_path())
-            .map_or_else(|| PathBuf::from("."), PathBuf::from);
-
         self.root_path = params
             .workspace_folders
             .as_ref()
@@ -115,24 +107,31 @@ impl Server {
             .and_then(|ws| ws.uri.to_file_path())
             .map_or_else(|| PathBuf::from("."), PathBuf::from);
 
-        tracing::info!("root_path: {:?}", self.root_path.display());
+        tracing::info!("root_path: {}", self.root_path.display());
 
-        *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
+        if let Ok(json_params) = serde_json::to_string(&server_caps) {
+            tracing::info!(params = %json_params, "Server Capabilities");
+        } else {
+            tracing::debug!(raw_params = ?params, "Raw Server Capabilities");
+        }
+        if let Ok(json_params) = serde_json::to_string(&self.capabilities) {
+            tracing::info!(params = %json_params, "Client Capabilities");
+        } else {
+            tracing::debug!(raw_params = ?params, "Raw Client Capabilities");
+        }
+
+        // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
+        *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());
 
         if let Some(options) = params.initialization_options {
             if options.as_object().filter(|o| !o.is_empty()).is_some() {
                 tracing::debug!("Initialization options: {options}");
                 #[allow(unused_must_use)]
-                self.on_update_config(&UpdateConfigEvent(options));
+                self.on_update_config(UpdateConfigEvent(options));
             }
         }
 
         self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
-
-        tracing::info!(
-            "Server Capabilities: {server_caps:?}, Client Capabilities: {:?}",
-            self.capabilities
-        );
 
         ready(Ok(InitializeResult {
             capabilities: server_caps,
@@ -306,8 +305,8 @@ impl Server {
     }
 
     #[allow(clippy::unused_self)]
-    fn on_did_change_configuration(&mut self, _params: DidChangeConfigurationParams) -> NotifyResult {
-        tracing::info!("notif::DidChangeConfiguration");
+    fn on_did_change_configuration(&mut self, params: DidChangeConfigurationParams) -> NotifyResult {
+        tracing::info!("notif::DidChangeConfiguration - params: {params:?}");
         self.spawn_reload_config();
 
         ControlFlow::Continue(())
@@ -335,13 +334,14 @@ impl Server {
                     return;
                 }
             };
-            tracing::debug!("Updating config: {:?}", v);
+
             let v = v.pop().unwrap_or_default();
+            tracing::debug!("Updating config: {v}");
             let _: Result<_, _> = client.emit(UpdateConfigEvent(v));
         });
     }
 
-    fn on_update_config(&mut self, value: &UpdateConfigEvent) -> NotifyResult {
+    fn on_update_config(&mut self, value: UpdateConfigEvent) -> NotifyResult {
         let mut config = Config::clone(&self.config);
         let mut errors = Vec::new();
         config.update(&value.0, &mut errors);
