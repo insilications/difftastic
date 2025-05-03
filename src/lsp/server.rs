@@ -6,11 +6,11 @@ use std::{
 };
 
 use anyhow::Result;
-use async_lsp::{ClientSocket, ErrorCode, ResponseError, router::Router};
+use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, router::Router};
 use lsp_types::{
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, ServerInfo,
-    notification as notif,
+    ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
+    InitializeResult, InitializedParams, ServerInfo, notification as notif,
     request::{self as req},
 };
 
@@ -20,13 +20,14 @@ use crate::{
     lsp::{
         cache,
         capabilities::{NegotiatedCapabilities, negotiate_capabilities},
-        config::Config,
+        config::{Config, WORKSPACE_CONFIG_KEY},
         lsp_ext,
         uri_ext::UriExt,
     },
 };
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
+struct UpdateConfigEvent(serde_json::Value);
 
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
 const LSP_SERVER_VERSION: &str = "0.1.0";
@@ -64,7 +65,9 @@ impl Server {
             .notification::<notif::DidCloseTextDocument>(Self::on_did_close)
             .notification::<notif::DidChangeTextDocument>(Self::on_did_change)
             .notification::<notif::DidChangeConfiguration>(Self::on_did_change_configuration)
-            .notification::<notif::DidSaveTextDocument>(Self::on_did_save);
+            .notification::<notif::DidSaveTextDocument>(Self::on_did_save)
+            //// Events ////
+            .event(Self::on_update_config);
         router
     }
 
@@ -118,23 +121,17 @@ impl Server {
         if let Some(options) = params.initialization_options {
             if options.as_object().filter(|o| !o.is_empty()).is_some() {
                 tracing::debug!("Initialization options: {options}");
-                let mut config = Config::clone(&self.config);
-                let mut errors = Vec::new();
-                config.update(&options, &mut errors);
-
-                if errors.is_empty() {
-                    self.config = Arc::new(config);
-                } else {
-                    let msg = std::iter::once("Failed to apply some settings:")
-                        .chain(errors.iter().flat_map(|s| ["\n- ", s]))
-                        .collect::<String>();
-                    tracing::error!("{}", msg);
-                    // self.client.show_message_ext(MessageType::ERROR, msg);
-                }
+                #[allow(unused_must_use)]
+                self.on_update_config(&UpdateConfigEvent(options));
             }
         }
 
         self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
+
+        tracing::info!(
+            "Server Capabilities: {server_caps:?}, Client Capabilities: {:?}",
+            self.capabilities
+        );
 
         ready(Ok(InitializeResult {
             capabilities: server_caps,
@@ -300,6 +297,55 @@ impl Server {
     #[allow(clippy::unused_self)]
     fn on_did_change_configuration(&mut self, _params: DidChangeConfigurationParams) -> NotifyResult {
         tracing::info!("notif::DidChangeConfiguration");
+        self.spawn_reload_config();
+
+        ControlFlow::Continue(())
+    }
+
+    fn spawn_reload_config(&self) {
+        if !self.capabilities.workspace_configuration {
+            return;
+        }
+        let mut client = self.client.clone();
+        tokio::spawn(async move {
+            let ret = client
+                .configuration(ConfigurationParams {
+                    items: vec![ConfigurationItem {
+                        scope_uri: None,
+                        section: Some(WORKSPACE_CONFIG_KEY.into()),
+                    }],
+                })
+                .await;
+            let mut v = match ret {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::error!("Failed to update config: {err}");
+                    // client.show_message_ext(MessageType::ERROR, format_args!("Failed to update config: {err}"));
+                    return;
+                }
+            };
+            tracing::debug!("Updating config: {:?}", v);
+            let v = v.pop().unwrap_or_default();
+            let _: Result<_, _> = client.emit(UpdateConfigEvent(v));
+        });
+    }
+
+    fn on_update_config(&mut self, value: &UpdateConfigEvent) -> NotifyResult {
+        let mut config = Config::clone(&self.config);
+        let mut errors = Vec::new();
+        config.update(&value.0, &mut errors);
+
+        tracing::info!("Updated config, errors: {errors:?}, config: {config:?}");
+
+        if errors.is_empty() {
+            self.config = Arc::new(config);
+        } else {
+            let msg = std::iter::once("Failed to apply some settings:")
+                .chain(errors.iter().flat_map(|s| ["\n- ", s]))
+                .collect::<String>();
+            tracing::error!("{}", msg);
+            // self.client.show_message_ext(MessageType::ERROR, msg);
+        }
 
         ControlFlow::Continue(())
     }

@@ -2,6 +2,8 @@ use std::{convert::TryFrom, path::PathBuf};
 
 use phf::phf_map;
 
+pub const WORKSPACE_CONFIG_KEY: &str = "blameHighlightingSettings";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LspLogLevel {
     Debug,
