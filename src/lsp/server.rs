@@ -11,8 +11,7 @@ use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
     InitializeResult, InitializedParams, Registration, RegistrationParams, ServerInfo, notification as notif,
-    notification::Notification,
-    request::{self as req},
+    notification::Notification, request, request::Request,
 };
 
 use crate::{
@@ -50,9 +49,9 @@ impl Server {
         let mut router = Router::new(this);
         router
             //// Lifecycle ////
-            .request::<req::Initialize, _>(Self::on_initialize)
+            .request::<request::Initialize, _>(Self::on_initialize)
             .notification::<notif::Initialized>(Self::on_initialized)
-            .request::<req::Shutdown, _>(|_, ()| {
+            .request::<request::Shutdown, _>(|_, ()| {
                 tracing::info!("req::Shutdown");
                 ready(Ok(()))
             })
@@ -89,7 +88,8 @@ impl Server {
         &mut self,
         params: InitializeParams,
     ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
-        tracing_to_json!(&params, "Initialize");
+        tracing::debug!("req::Initialize");
+        // tracing_to_json!(&params, "Initialize");
 
         let (server_caps, final_caps) = negotiate_capabilities(&params);
         self.capabilities = final_caps;
@@ -105,8 +105,8 @@ impl Server {
 
         tracing::info!("root_path: {}", self.root_path.display());
 
-        tracing_to_json_pretty!(&server_caps, "Server Capabilities");
-        tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
+        // tracing_to_json_pretty!(&server_caps, "Server Capabilities");
+        // tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
 
         // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
         *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());

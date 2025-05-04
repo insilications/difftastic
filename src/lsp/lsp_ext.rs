@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 //     const METHOD: &'static str = "nil/reloadFlake";
 // }
 
+#[derive(Debug)]
 pub enum DidOpenTextDocumentCustom {}
 
 impl Request for DidOpenTextDocumentCustom {

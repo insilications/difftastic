@@ -9,18 +9,21 @@
 // mod vfs;
 
 use anyhow::{Context, Result};
-use async_lsp::{
-    client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer, panic::CatchUnwindLayer,
-    server::LifecycleLayer, tracing::TracingLayer,
-};
 // use ide::VfsPath;
 // use lsp_types::Url;
-use lsp_types::ShowMessageParams;
+use async_lsp::{
+    client_monitor::ClientProcessMonitorLayer,
+    concurrency::ConcurrencyLayer,
+    panic::CatchUnwindLayer,
+    server::LifecycleLayer,
+    stdio::{PipeStdin, PipeStdout},
+    tracing::TracingLayer,
+};
 use tower::ServiceBuilder;
+use tracing::Level;
 
 // pub(crate) use server::{Server, StateSnapshot};
 // pub(crate) use vfs::{LineMap, Vfs};
-
 // use crate::lsp::meter::MeterLayer;
 // use crate::lsp::server::{Server, StateSnapshot};
 use crate::lsp::server::Server;
@@ -78,6 +81,8 @@ pub async fn run_server_stdio() -> Result<()> {
         async_lsp::stdio::PipeStdin::lock_tokio().context("stdin is not pipe-like")?,
         async_lsp::stdio::PipeStdout::lock_tokio().context("stdout is not pipe-like")?,
     );
+    // let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
+    // let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
     // Fallback to spawn blocking read/write otherwise.
     #[cfg(not(unix))]
     let (stdin, stdout) = (
@@ -98,8 +103,9 @@ pub async fn run_server_stdio() -> Result<()> {
             .layer(LifecycleLayer::default())
             .layer(CatchUnwindLayer::default())
             // TODO: Use `CatchUnwindLayer`.
-            .layer(ConcurrencyLayer::new(concurrency))
+            .layer(ConcurrencyLayer::default())
             .layer(ClientProcessMonitorLayer::new(client.clone()))
+            // .layer(ClientProcessMonitorLayer::new(client))
             .service(Server::new_router(client))
     });
 

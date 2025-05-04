@@ -9,15 +9,17 @@
 //! - [`Future::poll`] of returned `Future` from [`Service::call`].
 //! - [`LspService::notify`].
 //! - [`LspService::emit`].
-use std::future::Future;
-use std::ops::ControlFlow;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::{
+    future::Future,
+    ops::ControlFlow,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use pin_project_lite::pin_project;
 use tower_layer::Layer;
 use tower_service::Service;
-use tracing::{info_span, Span};
+use tracing::{Span, info_span};
 
 use crate::{AnyEvent, AnyNotification, AnyRequest, LspService, Result};
 
@@ -33,9 +35,9 @@ pub struct Tracing<S> {
 define_getters!(impl[S] Tracing<S>, service: S);
 
 impl<S: LspService> Service<AnyRequest> for Tracing<S> {
-    type Response = S::Response;
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
+    type Response = S::Response;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let _guard = self.spans.service_ready.map(|f| f().entered());
