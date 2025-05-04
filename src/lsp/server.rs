@@ -113,7 +113,7 @@ impl Server {
 
         if let Some(options) = params.initialization_options {
             if options.as_object().filter(|o| !o.is_empty()).is_some() {
-                tracing::debug!("Initialization options: {options}");
+                tracing::debug!("initialization_options: {options}");
                 #[allow(unused_must_use)]
                 self.on_update_config(UpdateConfigEvent(options));
             }
@@ -134,7 +134,7 @@ impl Server {
 
     #[allow(clippy::unused_self)]
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
-        tracing::info!("notif::Initialized");
+        tracing::debug!("notif::Initialized");
 
         if self.capabilities.workspace_configuration {
             tokio::spawn({
@@ -154,13 +154,14 @@ impl Server {
         params: lsp_ext::DidOpenTextDocumentCustomParams,
     ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
         tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
+        tracing::debug!("TESTE");
 
         let relative_stripped_path = Path::new(&params.text_document.uri)
             .strip_prefix(&self.root_path)
-            .map_err(|e| {
-                tracing::error!("Failed to strip prefix: {}", e);
+            .map_err(|err| {
+                tracing::error!("Failed to strip prefix: {err}");
                 ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
-                    ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {e}")),
+                    ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
                 ))
             })
             .unwrap();
@@ -201,16 +202,16 @@ impl Server {
             .lookup_version(relative_stripped_path, &params.rev)
         {
             // Arc counts inside the cloned FileVersion will reflect sharing
-            tracing::info!(
+            tracing::debug!(
                 "Arc Counts : content: {} - summary: {}",
                 Arc::strong_count(&version.content), // Count on the cloned Arc
                 Arc::strong_count(&version.summary)  // Count on the cloned Arc
             );
-            tracing::info!("Path           : {}", relative_stripped_path.display());
-            tracing::info!("Revspec        : {}", params.rev);
-            tracing::info!("Commit         : {}", commit_id.short());
-            tracing::info!("Summary        : {}", version.summary);
-            tracing::info!("Content Length : {}", version.content.len());
+            tracing::debug!("Path           : {}", relative_stripped_path.display());
+            tracing::debug!("Revspec        : {}", params.rev);
+            tracing::debug!("Commit         : {}", commit_id.short());
+            tracing::debug!("Summary        : {}", version.summary);
+            tracing::debug!("Content Length : {}", version.content.len());
 
             match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
                 Ok(diff_result) => {
@@ -229,14 +230,14 @@ impl Server {
                         //     }
                         // }
                     } else {
-                        tracing::info!("No changes detected for path {}", rhs_path_buf.display());
+                        tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
                         ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
                     }
                 }
                 Err(err) => ready(Err(err)),
             }
         } else {
-            tracing::info!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
+            tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
             ready(Err(ResponseError::new(
                 ErrorCode::REQUEST_FAILED,
                 format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
@@ -247,9 +248,9 @@ impl Server {
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
-        tracing::info!(
-            "notif::DidOpenTextDocument - params.text_document.uri.to_file_path(): {:?} - params.text_document.version: {:?}",
-            params.text_document.uri.to_file_path(),
+        tracing::debug!(
+            "notif::DidOpenTextDocument - params.text_document.uri: {} - params.text_document.version: {}",
+            params.text_document.uri.to_file_path().unwrap_or_default().display(),
             params.text_document.version
         );
 
@@ -259,9 +260,9 @@ impl Server {
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_close(&mut self, params: DidCloseTextDocumentParams) -> NotifyResult {
-        tracing::info!(
-            "notif::DidCloseTextDocument with params.text_document.uri.to_file_path(): {:?}",
-            params.text_document.uri.to_file_path()
+        tracing::debug!(
+            "notif::DidCloseTextDocument - params.text_document.uri: {}",
+            params.text_document.uri.to_file_path().unwrap_or_default().display()
         );
 
         ControlFlow::Continue(())
@@ -270,16 +271,18 @@ impl Server {
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_change(&mut self, params: DidChangeTextDocumentParams) -> NotifyResult {
-        let file_path = params.text_document.uri.to_file_path().unwrap();
+        let file_path = params.text_document.uri.to_file_path().unwrap_or_default();
+        let file_path_display = file_path.display();
         tracing::debug!(
-            "notif::DidChangeTextDocument - params.text_document.uri.to_file_path(): {:?} - params.text_document.version: {:?} - params.content_changes.len(): {:?}",
-            file_path.display(),
+            "notif::DidChangeTextDocument - params.text_document.uri: {} - params.text_document.version: {} -
+        params.content_changes.len(): {}",
+            file_path_display,
             params.text_document.version,
             params.content_changes.len()
         );
         for c in &params.content_changes {
-            tracing::debug!("{:?} - content_change.range: {:?}", file_path.display(), c.range);
-            tracing::debug!("{:?} - content_change.text: {:?}", file_path.display(), c.text);
+            tracing::debug!("{} - content_change.range: {:?}", file_path_display, c.range);
+            tracing::debug!("{} - content_change.text: {}", file_path_display, c.text);
         }
 
         ControlFlow::Continue(())
@@ -287,14 +290,15 @@ impl Server {
 
     #[allow(clippy::unused_self)]
     fn on_did_save(&mut self, _params: DidSaveTextDocumentParams) -> NotifyResult {
-        tracing::info!("notif::DidSaveTextDocument");
+        tracing::debug!("notif::DidSaveTextDocument");
 
         ControlFlow::Continue(())
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_change_configuration(&mut self, params: DidChangeConfigurationParams) -> NotifyResult {
-        tracing::info!("notif::DidChangeConfiguration - params: {params:?}");
+        tracing_to_json_pretty!(&params, "notif::DidChangeConfiguration");
         self.spawn_reload_config();
 
         ControlFlow::Continue(())
@@ -329,6 +333,7 @@ impl Server {
         });
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     fn on_update_config(&mut self, value: UpdateConfigEvent) -> NotifyResult {
         let mut config = Config::clone(&self.config);
         let mut errors = Vec::new();
@@ -342,14 +347,13 @@ impl Server {
             let msg = std::iter::once("Failed to apply some settings:")
                 .chain(errors.iter().flat_map(|s| ["\n- ", s]))
                 .collect::<String>();
-            tracing::error!("{}", msg);
+            tracing::error!("{msg}");
             // self.client.show_message_ext(MessageType::ERROR, msg);
         }
 
         ControlFlow::Continue(())
     }
 
-    // register_options: Some(serde_json::to_value(register_options).unwrap()),
     async fn register_did_change_configuration(client: &mut ClientSocket) {
         let register_options = DidChangeConfigurationParams {
             settings: serde_json::to_value(WORKSPACE_CONFIG_KEY).unwrap(),

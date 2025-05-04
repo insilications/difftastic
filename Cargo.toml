@@ -137,7 +137,7 @@ async-lsp = { version = "0.2.2", features = [
         "tracing",
 ], path = "crates/async-lsp/" }
 lsp-types = { version = "0.97.0", features = ["proposed"] }
-waitpid-any = { version = "0.3" }
+waitpid-any = { version = "0.3.0" }
 rustix = "1.0.5"
 tower-layer = "0.3.3"
 tower-service = "0.3.3"

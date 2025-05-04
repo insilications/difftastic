@@ -53,6 +53,7 @@ use display::style::print_warning;
 use log::info;
 use mimalloc::MiMalloc;
 use options::{FilePermissions, USAGE};
+use tracing::Level;
 
 use crate::{
     conflicts::{START_LHS_MARKER, apply_conflict_markers},
@@ -99,6 +100,8 @@ use crate::{
     syntax::init_next_prev,
 };
 
+// extern crate pretty_env_logger;
+
 const DEFAULT_DISPLAY_OPTIONS_LSP: DisplayOptions = DisplayOptions {
     background_color: BackgroundColor::Dark,
     use_color: false,
@@ -122,10 +125,6 @@ const DEFAULT_DIFF_OPTIONS_LSP: DiffOptions = DiffOptions {
 
 const BACKTRACE_ENV: &str = "RUST_BACKTRACE";
 const CHRONO_LOCAL: &str = "%FT%T";
-
-use tracing::Level;
-
-// extern crate pretty_env_logger;
 
 /// Terminate the process if we get SIGPIPE.
 #[cfg(unix)]
@@ -154,8 +153,6 @@ fn main() {
             .with_max_level(Level::DEBUG)
             .with_ansi(false)
             .with_writer(std::io::stderr)
-            // .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
-            // .with_timer(tracing_subscriber::fmt::time::ChronoLocal::rfc_3339())
             .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
             .compact()
             .init();

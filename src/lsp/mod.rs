@@ -67,37 +67,36 @@ macro_rules! tracing_to_json_pretty {
 
             match ::serde_json::to_string_pretty(__ttj_val) {
                 Ok(__ttj_json) => {
-                    // Optimization: Use structured logging fields
                     ::tracing::debug!(
-                        // --- Structured Fields (Sigils % and ? work here) ---
-                        label = $label,
-                        // Use stringify! directly, handles &ident correctly
-                        expr = ::core::stringify!($value),
-                        // Use % formatting for the JSON string (which implements Display)
-                        json = %__ttj_json,
+                        // // --- Structured Fields (Sigils % and ? work here) ---
+                        // label = $label,
+                        // // Use stringify! directly, handles &ident correctly
+                        // expr = ::core::stringify!($value),
+                        // // Use % formatting for the JSON string (which implements Display)
+                        // json = %__ttj_json,
                         // Message template using fields
                         "{} - {}: {}",
-                       $label, // Corresponds to the first {}
+                        $label,                     // Corresponds to the first {}
                         ::core::stringify!($value), // Corresponds to the second {}
-                        __ttj_json // Corresponds to the third {} (using Display)
+                        __ttj_json                  // Corresponds to the third {} (using Display)
                     );
                 }
                 Err(__err) => {
-                    // Log failure using structured fields
+                    // Log failure
                     // Combine error and fallback into one event for efficiency
                     ::tracing::debug!(
-                        // --- Structured Fields (Sigils % and ? work here) ---
-                        label = $label,
-                        expr = ::core::stringify!($value),
-                        // Use % formatting for the error (which implements Display)
-                        error = %__err,
-                        // Use ? formatting for the Debug representation
-                        value = ?__ttj_val,
+                        // // --- Structured Fields (Sigils % and ? work here) ---
+                        // label = $label,
+                        // expr = ::core::stringify!($value),
+                        // // Use % formatting for the error (which implements Display)
+                        // error = %__err,
+                        // // Use ? formatting for the Debug representation
+                        // value = ?__ttj_val,
                         // Combined message template
                         "Failed to serialise `{}` ({}): {:?}",
                         ::core::stringify!($value), // Corresponds to the first {}
-                        __err, // Corresponds to the second {} (using Display)
-                        __ttj_val // Corresponds to the third {:?} (using Debug)
+                        __err,                      // Corresponds to the second {} (using Display)
+                        __ttj_val                   // Corresponds to the third {:?} (using Debug)
                     );
                 }
             }
