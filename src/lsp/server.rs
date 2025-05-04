@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     future::{Future, ready},
     ops::ControlFlow,
     path::{Path, PathBuf},
@@ -14,6 +15,7 @@ use lsp_types::{
     notification::Notification,
     request::{self as req, Request},
 };
+use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::{
@@ -90,7 +92,7 @@ impl Server {
         &mut self,
         params: InitializeParams,
     ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
-        // tracing_to_json!(&params, "Initialize with", "Raw initialize with");
+        tracing_to_json!(&params, "Initialize");
 
         let (server_caps, final_caps) = negotiate_capabilities(&params);
         self.capabilities = final_caps;
@@ -106,28 +108,8 @@ impl Server {
 
         tracing::info!("root_path: {}", self.root_path.display());
 
-        // tracing_to_json!(&server_caps, "Server Capabilities", "Raw Server Capabilities");
-        // tracing_to_json!(&self.capabilities, "Client Capabilities", "Raw Client Capabilities");
-        let k = stringify!(WORKSPACE_CONFIG_KEY);
-        // tracing_to_json!(&server_caps);
         tracing_to_json!(&server_caps, "Server Capabilities");
         tracing_to_json!(&self.capabilities, "Client Capabilities");
-        // tracing_to_json!(
-        //     &server_caps,
-        //     "0 Server Capabilities - server_caps: {}",
-        //     "0 Raw Server Capabilities - server_caps: {:?}"
-        // );
-        // tracing_to_json!(
-        //     &self.capabilities,
-        //     "Client Capabilities - self.capabilities: {}",
-        //     "Raw Client Capabilities - self.capabilities: {}"
-        // );
-
-        if let Ok(json_params) = serde_json::to_string_pretty(&server_caps) {
-            tracing::info!("Server Capabilities - server_caps: {}", json_params);
-        } else {
-            tracing::debug!("Raw Server Capabilities - server_caps: {:?}", &server_caps);
-        }
 
         // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
         *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());
@@ -174,7 +156,7 @@ impl Server {
         &mut self,
         params: lsp_ext::DidOpenTextDocumentCustomParams,
     ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
-        tracing::info!("req::DidOpenTextDocumentCustom with params: {:?}", params);
+        tracing_to_json!(&params, "lsp_ext::DidOpenTextDocumentCustom");
 
         let relative_stripped_path = Path::new(&params.text_document.uri)
             .strip_prefix(&self.root_path)

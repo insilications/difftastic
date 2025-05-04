@@ -79,7 +79,7 @@ mod uri_ext;
 #[macro_export]
 macro_rules! tracing_to_json {
     // ────────────────────────────────────────────────────────────────
-    // Example: tracing_to_json!(&server_caps, "Server Capabilities"); -> "Server Capabilities - server_caps: {...}"
+    // Example: tracing_to_json!(&server_caps, "Server Capabilities"); -> "Server Capabilities - &  server_caps: {...}"
     // ────────────────────────────────────────────────────────────────
     (& $value:ident, $label:literal $(,)?) => {{
         let __ttj_val = &$value; // Evaluate once
@@ -113,8 +113,8 @@ macro_rules! tracing_to_json {
     }};
 
     // ────────────────────────────────────────────────────────────────
-    // Example: tracing_to_json!(self.config.server_caps(), "Server Capabilities");
-    // -> "Server Capabilities - self.config.server_caps(): {...}"
+    // Example: tracing_to_json!(&self.config.server_caps(), "Server Capabilities");
+    // -> "Server Capabilities - &self.config.server_caps(): {...}"
     // ────────────────────────────────────────────────────────────────
     ($value:expr, $label:literal $(,)?) => {{
         let __ttj_val = &$value; // Evaluate once

@@ -72,8 +72,6 @@ pub async fn run_server_stdio() -> Result<()> {
     };
     tracing::info!("Max concurrent requests: {concurrency}");
 
-    // let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
-    // let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
     // Prefer truly asynchronous piped stdin/stdout without blocking tasks.
     #[cfg(unix)]
     let (stdin, stdout) = (
