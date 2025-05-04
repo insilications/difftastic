@@ -28,58 +28,104 @@ mod uri_ext;
 //     }};
 // }
 
+// #[macro_export]
+// macro_rules! tracing_to_json {
+//     // ------------------------------------------------------------------
+//     // 1. `&ident`  ⇒  use `ident` as the field key
+//     // ------------------------------------------------------------------
+//     ( & $val:ident , $ok_msg:expr, $err_msg:expr $(,)? ) => {{
+//         let __ttj_val = &$val;                         // evaluate once
+//         match ::serde_json::to_string(__ttj_val) {
+//             Ok(__ttj_json) => {
+//                 ::tracing::info!($val = %__ttj_json, $ok_msg);
+//             }
+//             Err(_) => {
+//                 ::tracing::debug!($val = ?__ttj_val,  $err_msg);
+//             }
+//         }
+//     }};
+
+//     // ------------------------------------------------------------------
+//     // 2. bare `ident`  (no leading `&`)
+//     // ------------------------------------------------------------------
+//     ( $val:ident , $ok_msg:expr, $err_msg:expr $(,)? ) => {{
+//         let __ttj_val = &$val;
+//         match ::serde_json::to_string(__ttj_val) {
+//             Ok(__ttj_json) => {
+//                 ::tracing::info!($val = %__ttj_json, $ok_msg);
+//             }
+//             Err(_) => {
+//                 ::tracing::debug!($val = ?__ttj_val,  $err_msg);
+//             }
+//         }
+//     }};
+
+//     // ------------------------------------------------------------------
+//     // 3. Fallback for any other expression  ⇒  fixed field name `value`
+//     // ------------------------------------------------------------------
+//     ( $val:expr , $ok_msg:expr, $err_msg:expr $(,)? ) => {{
+//         let __ttj_val = &$val;
+//         match ::serde_json::to_string(__ttj_val) {
+//             Ok(__ttj_json) => {
+//                 ::tracing::info!(value = %__ttj_json, $ok_msg);
+//             }
+//             Err(_) => {
+//                 ::tracing::debug!(value = ?__ttj_val, $err_msg);
+//             }
+//         }
+//     }};
+// }
+
 #[macro_export]
 macro_rules! tracing_to_json {
     // ────────────────────────────────────────────────────────────────
-    // 1. Simplest form ─ just the value. We auto-derive a label from the type name so the log line is still
-    //    identifiable. Example: tracing_to_json!(&foo);
+    // Example: tracing_to_json!(&server_caps, "Server Capabilities"); -> "Server Capabilities - server_caps: {...}"
     // ────────────────────────────────────────────────────────────────
-    ($value:expr $(,)?) => {{
-        let __val = &$value;
-        let __type = ::core::any::type_name::<_>(); // e.g. "my_crate::Foo"
+    (& $value:ident, $label:literal $(,)?) => {{
+        let __ttj_val = &$value; // Evaluate once
 
-        match ::serde_json::to_string_pretty(__val) {
-            Ok(__json) => {
-                ::tracing::debug!("{}: {}", __type, __json);
+        match ::serde_json::to_string_pretty(__ttj_val) {
+            Ok(__ttj_json) => {
+                ::tracing::debug!(concat!($label, " - &", stringify!($value), ": {}"), __ttj_json);
             }
             Err(__err) => {
-                ::tracing::debug!("Failed to serialise {}: {}", __type, __err);
-                ::tracing::debug!("{}: {:?}", __type, __val);
+                ::tracing::debug!(concat!("Failed to serialise `&", stringify!($value), "`: {}"), __err);
+                ::tracing::debug!(concat!($label, " - &", stringify!($value), ": {:?}"), __ttj_val);
             }
         }
     }};
 
     // ────────────────────────────────────────────────────────────────
-    // 2. Value + *one* string literal label. Example: tracing_to_json!(&foo, "foo"); -> "foo: { ... }"  or  "foo: Foo {
-    //    .. }"
+    // Example: tracing_to_json!(server_caps, "Server Capabilities"); -> "Server Capabilities - server_caps: {...}"
+    // ────────────────────────────────────────────────────────────────
+    ($value:ident, $label:literal $(,)?) => {{
+        let __ttj_val = &$value; // Evaluate once
+
+        match ::serde_json::to_string_pretty(__ttj_val) {
+            Ok(__ttj_json) => {
+                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {}"), __ttj_json);
+            }
+            Err(__err) => {
+                ::tracing::debug!(concat!("Failed to serialise `", stringify!($value), "`: {}"), __err);
+                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {:?}"), __ttj_val);
+            }
+        }
+    }};
+
+    // ────────────────────────────────────────────────────────────────
+    // Example: tracing_to_json!(self.config.server_caps(), "Server Capabilities");
+    // -> "Server Capabilities - self.config.server_caps(): {...}"
     // ────────────────────────────────────────────────────────────────
     ($value:expr, $label:literal $(,)?) => {{
-        let __val = &$value;
+        let __ttj_val = &$value; // Evaluate once
 
-        match ::serde_json::to_string_pretty(__val) {
-            Ok(__json) => {
-                ::tracing::debug!(concat!($label, ": {}"), __json);
+        match ::serde_json::to_string_pretty(__ttj_val) {
+            Ok(__ttj_json) => {
+                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {}"), __ttj_json);
             }
             Err(__err) => {
-                ::tracing::debug!(concat!("Failed to serialise ", $label, ": {}"), __err);
-                ::tracing::debug!(concat!($label, ": {:?}"), __val);
-            }
-        }
-    }};
-
-    // ────────────────────────────────────────────────────────────────
-    // 3. Full control - value + success format + error format (your original signature, now the “catch-all” arm).
-    // ────────────────────────────────────────────────────────────────
-    ($value:expr, $ok_fmt:expr, $err_fmt:expr $(,)?) => {{
-        let __val = &$value;
-
-        match ::serde_json::to_string_pretty(__val) {
-            Ok(__json) => {
-                ::tracing::debug!($ok_fmt, __json);
-            }
-            Err(__err) => {
-                ::tracing::debug!("Failed to serialize value to JSON: {}", __err);
-                ::tracing::debug!($err_fmt, __val);
+                ::tracing::debug!(concat!("Failed to serialise `", stringify!($value), "`: {}"), __err);
+                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {:?}"), __ttj_val);
             }
         }
     }};

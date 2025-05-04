@@ -108,14 +108,15 @@ impl Server {
 
         // tracing_to_json!(&server_caps, "Server Capabilities", "Raw Server Capabilities");
         // tracing_to_json!(&self.capabilities, "Client Capabilities", "Raw Client Capabilities");
-
-        tracing_to_json!(&server_caps);
-        tracing_to_json!(&server_caps, "2 Server Capabilities - server_caps");
-        tracing_to_json!(
-            &server_caps,
-            "0 Server Capabilities - server_caps: {}",
-            "0 Raw Server Capabilities - server_caps: {:?}"
-        );
+        let k = stringify!(WORKSPACE_CONFIG_KEY);
+        // tracing_to_json!(&server_caps);
+        tracing_to_json!(&server_caps, "Server Capabilities");
+        tracing_to_json!(&self.capabilities, "Client Capabilities");
+        // tracing_to_json!(
+        //     &server_caps,
+        //     "0 Server Capabilities - server_caps: {}",
+        //     "0 Raw Server Capabilities - server_caps: {:?}"
+        // );
         // tracing_to_json!(
         //     &self.capabilities,
         //     "Client Capabilities - self.capabilities: {}",
