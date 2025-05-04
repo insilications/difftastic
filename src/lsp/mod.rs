@@ -7,125 +7,99 @@ mod meter;
 mod server;
 mod uri_ext;
 
-// #[macro_export]
-// macro_rules! tracing_to_json {
-//     // Allow an optional trailing comma so the macro looks natural.
-//     ($value:expr, $ok_fmt:expr, $err_fmt:expr $(,)?) => {{
-//         // Take a reference *once* so we never evaluate `$value` twice.
-//         let __val = &$value;
-
-//         // Fully-qualified paths keep the macro usable without explicit `use`s.
-//         match ::serde_json::to_string_pretty(__val) {
-//             Ok(__json) => {
-//                 ::tracing::info!($ok_fmt, __json);
-//             }
-//             Err(__err) => {
-//                 // 1. Log the fallback.
-//                 ::tracing::debug!("Failed to serialize value to JSON: {}", __err);
-//                 ::tracing::debug!($err_fmt, __val);
-//             }
-//         }
-//     }};
-// }
-
-// #[macro_export]
-// macro_rules! tracing_to_json {
-//     // ------------------------------------------------------------------
-//     // 1. `&ident`  ⇒  use `ident` as the field key
-//     // ------------------------------------------------------------------
-//     ( & $val:ident , $ok_msg:expr, $err_msg:expr $(,)? ) => {{
-//         let __ttj_val = &$val;                         // evaluate once
-//         match ::serde_json::to_string(__ttj_val) {
-//             Ok(__ttj_json) => {
-//                 ::tracing::info!($val = %__ttj_json, $ok_msg);
-//             }
-//             Err(_) => {
-//                 ::tracing::debug!($val = ?__ttj_val,  $err_msg);
-//             }
-//         }
-//     }};
-
-//     // ------------------------------------------------------------------
-//     // 2. bare `ident`  (no leading `&`)
-//     // ------------------------------------------------------------------
-//     ( $val:ident , $ok_msg:expr, $err_msg:expr $(,)? ) => {{
-//         let __ttj_val = &$val;
-//         match ::serde_json::to_string(__ttj_val) {
-//             Ok(__ttj_json) => {
-//                 ::tracing::info!($val = %__ttj_json, $ok_msg);
-//             }
-//             Err(_) => {
-//                 ::tracing::debug!($val = ?__ttj_val,  $err_msg);
-//             }
-//         }
-//     }};
-
-//     // ------------------------------------------------------------------
-//     // 3. Fallback for any other expression  ⇒  fixed field name `value`
-//     // ------------------------------------------------------------------
-//     ( $val:expr , $ok_msg:expr, $err_msg:expr $(,)? ) => {{
-//         let __ttj_val = &$val;
-//         match ::serde_json::to_string(__ttj_val) {
-//             Ok(__ttj_json) => {
-//                 ::tracing::info!(value = %__ttj_json, $ok_msg);
-//             }
-//             Err(_) => {
-//                 ::tracing::debug!(value = ?__ttj_val, $err_msg);
-//             }
-//         }
-//     }};
-// }
-
 #[macro_export]
 macro_rules! tracing_to_json {
-    // ────────────────────────────────────────────────────────────────
-    // Example: tracing_to_json!(&server_caps, "Server Capabilities"); -> "Server Capabilities - &  server_caps: {...}"
-    // ────────────────────────────────────────────────────────────────
-    (& $value:ident, $label:literal $(,)?) => {{
-        let __ttj_val = &$value; // Evaluate once
-
-        match ::serde_json::to_string_pretty(__ttj_val) {
-            Ok(__ttj_json) => {
-                ::tracing::debug!(concat!($label, " - &", stringify!($value), ": {}"), __ttj_json);
-            }
-            Err(__err) => {
-                ::tracing::debug!(concat!("Failed to serialise `&", stringify!($value), "`: {}"), __err);
-                ::tracing::debug!(concat!($label, " - &", stringify!($value), ": {:?}"), __ttj_val);
-            }
-        }
-    }};
-
-    // ────────────────────────────────────────────────────────────────
-    // Example: tracing_to_json!(server_caps, "Server Capabilities"); -> "Server Capabilities - server_caps: {...}"
-    // ────────────────────────────────────────────────────────────────
-    ($value:ident, $label:literal $(,)?) => {{
-        let __ttj_val = &$value; // Evaluate once
-
-        match ::serde_json::to_string_pretty(__ttj_val) {
-            Ok(__ttj_json) => {
-                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {}"), __ttj_json);
-            }
-            Err(__err) => {
-                ::tracing::debug!(concat!("Failed to serialise `", stringify!($value), "`: {}"), __err);
-                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {:?}"), __ttj_val);
-            }
-        }
-    }};
-
-    // ────────────────────────────────────────────────────────────────
-    // Example: tracing_to_json!(&self.config.server_caps(), "Server Capabilities");
-    // -> "Server Capabilities - &self.config.server_caps(): {...}"
-    // ────────────────────────────────────────────────────────────────
+    // Single arm handles all cases: &ident, ident, expr
     ($value:expr, $label:literal $(,)?) => {{
-        let __ttj_val = &$value; // Evaluate once
+        // Optimization: Check log level *before* doing any work
+        if ::tracing::enabled!(::tracing::Level::DEBUG) {
+            // Evaluate the expression once, only if the level is enabled
+            let __ttj_val = &$value;
 
-        match ::serde_json::to_string_pretty(__ttj_val) {
-            Ok(__ttj_json) => {
-                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {}"), __ttj_json);
+            match ::serde_json::to_string(__ttj_val) {
+                Ok(__ttj_json) => {
+                    // Optimization: Use structured logging fields
+                    ::tracing::debug!(
+                        // --- Structured Fields (Sigils % and ? work here) ---
+                        label = $label,
+                        // Use stringify! directly, handles &ident correctly
+                        expr = ::core::stringify!($value),
+                        // Use % formatting for the JSON string (which implements Display)
+                        json = %__ttj_json,
+                        // Message template using fields
+                        "{} - {}: {}",
+                       $label, // Corresponds to the first {}
+                        ::core::stringify!($value), // Corresponds to the second {}
+                        __ttj_json // Corresponds to the third {} (using Display)
+                    );
+                }
+                Err(__err) => {
+                    // Log failure using structured fields
+                    // Combine error and fallback into one event for efficiency
+                    ::tracing::debug!(
+                        // --- Structured Fields (Sigils % and ? work here) ---
+                        label = $label,
+                        expr = ::core::stringify!($value),
+                        // Use % formatting for the error (which implements Display)
+                        error = %__err,
+                        // Use ? formatting for the Debug representation
+                        value = ?__ttj_val,
+                        // Combined message template
+                        "Failed to serialise `{}` ({}): {:?}",
+                        ::core::stringify!($value), // Corresponds to the first {}
+                        __err, // Corresponds to the second {} (using Display)
+                        __ttj_val // Corresponds to the third {:?} (using Debug)
+                    );
+                }
             }
-            Err(__err) => {
-                ::tracing::debug!(concat!("Failed to serialise `", stringify!($value), "`: {}"), __err);
-                ::tracing::debug!(concat!($label, " - ", stringify!($value), ": {:?}"), __ttj_val);
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! tracing_to_json_pretty {
+    // Single arm handles all cases: &ident, ident, expr
+    ($value:expr, $label:literal $(,)?) => {{
+        // Optimization: Check log level *before* doing any work
+        if ::tracing::enabled!(::tracing::Level::DEBUG) {
+            // Evaluate the expression once, only if the level is enabled
+            let __ttj_val = &$value;
+
+            match ::serde_json::to_string_pretty(__ttj_val) {
+                Ok(__ttj_json) => {
+                    // Optimization: Use structured logging fields
+                    ::tracing::debug!(
+                        // --- Structured Fields (Sigils % and ? work here) ---
+                        label = $label,
+                        // Use stringify! directly, handles &ident correctly
+                        expr = ::core::stringify!($value),
+                        // Use % formatting for the JSON string (which implements Display)
+                        json = %__ttj_json,
+                        // Message template using fields
+                        "{} - {}: {}",
+                       $label, // Corresponds to the first {}
+                        ::core::stringify!($value), // Corresponds to the second {}
+                        __ttj_json // Corresponds to the third {} (using Display)
+                    );
+                }
+                Err(__err) => {
+                    // Log failure using structured fields
+                    // Combine error and fallback into one event for efficiency
+                    ::tracing::debug!(
+                        // --- Structured Fields (Sigils % and ? work here) ---
+                        label = $label,
+                        expr = ::core::stringify!($value),
+                        // Use % formatting for the error (which implements Display)
+                        error = %__err,
+                        // Use ? formatting for the Debug representation
+                        value = ?__ttj_val,
+                        // Combined message template
+                        "Failed to serialise `{}` ({}): {:?}",
+                        ::core::stringify!($value), // Corresponds to the first {}
+                        __err, // Corresponds to the second {} (using Display)
+                        __ttj_val // Corresponds to the third {:?} (using Debug)
+                    );
+                }
             }
         }
     }};

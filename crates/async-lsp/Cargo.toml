@@ -93,7 +93,12 @@ tower-layer = "0.3.3"
 tower-service = "0.3.3"
 tracing = { version = "0.1.41", optional = true }
 waitpid-any = { version = "0.3", optional = true }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3.19", features = [
+    "env-filter",
+    "fmt",
+    "time",
+    "chrono",
+] }
 
 [dev-dependencies]
 async-io = { version = "2.4.0" }

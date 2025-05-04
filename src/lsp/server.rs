@@ -1,5 +1,4 @@
 use std::{
-    fmt::Debug,
     future::{Future, ready},
     ops::ControlFlow,
     path::{Path, PathBuf},
@@ -13,10 +12,8 @@ use lsp_types::{
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
     InitializeResult, InitializedParams, Registration, RegistrationParams, ServerInfo, notification as notif,
     notification::Notification,
-    request::{self as req, Request},
+    request::{self as req},
 };
-use serde::Serialize;
-use serde_json::{Map, Value};
 
 use crate::{
     diff_for_lsp,
@@ -28,7 +25,7 @@ use crate::{
         lsp_ext,
         uri_ext::UriExt,
     },
-    tracing_to_json,
+    tracing_to_json, tracing_to_json_pretty,
 };
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
@@ -108,8 +105,8 @@ impl Server {
 
         tracing::info!("root_path: {}", self.root_path.display());
 
-        tracing_to_json!(&server_caps, "Server Capabilities");
-        tracing_to_json!(&self.capabilities, "Client Capabilities");
+        tracing_to_json_pretty!(&server_caps, "Server Capabilities");
+        tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
 
         // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
         *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());
@@ -156,7 +153,7 @@ impl Server {
         &mut self,
         params: lsp_ext::DidOpenTextDocumentCustomParams,
     ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
-        tracing_to_json!(&params, "lsp_ext::DidOpenTextDocumentCustom");
+        tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
 
         let relative_stripped_path = Path::new(&params.text_document.uri)
             .strip_prefix(&self.root_path)

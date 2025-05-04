@@ -121,6 +121,7 @@ const DEFAULT_DIFF_OPTIONS_LSP: DiffOptions = DiffOptions {
 };
 
 const BACKTRACE_ENV: &str = "RUST_BACKTRACE";
+const CHRONO_LOCAL: &str = "%FT%T";
 
 use tracing::Level;
 
@@ -153,6 +154,10 @@ fn main() {
             .with_max_level(Level::DEBUG)
             .with_ansi(false)
             .with_writer(std::io::stderr)
+            // .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
+            // .with_timer(tracing_subscriber::fmt::time::ChronoLocal::rfc_3339())
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
+            .compact()
             .init();
 
         // lsp::start_lsp().await;
