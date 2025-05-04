@@ -26,6 +26,7 @@ use crate::{
         lsp_ext,
         uri_ext::UriExt,
     },
+    tracing_to_json,
 };
 
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
@@ -89,11 +90,7 @@ impl Server {
         &mut self,
         params: InitializeParams,
     ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
-        if let Ok(json_params) = serde_json::to_string(&params) {
-            tracing::info!(params = %json_params, "Initialize with");
-        } else {
-            tracing::debug!(raw_params = ?params, "Raw initialize with");
-        }
+        // tracing_to_json!(&params, "Initialize with", "Raw initialize with");
 
         let (server_caps, final_caps) = negotiate_capabilities(&params);
         self.capabilities = final_caps;
@@ -109,15 +106,26 @@ impl Server {
 
         tracing::info!("root_path: {}", self.root_path.display());
 
-        if let Ok(json_params) = serde_json::to_string(&server_caps) {
-            tracing::info!(params = %json_params, "Server Capabilities");
+        // tracing_to_json!(&server_caps, "Server Capabilities", "Raw Server Capabilities");
+        // tracing_to_json!(&self.capabilities, "Client Capabilities", "Raw Client Capabilities");
+
+        tracing_to_json!(&server_caps);
+        tracing_to_json!(&server_caps, "2 Server Capabilities - server_caps");
+        tracing_to_json!(
+            &server_caps,
+            "0 Server Capabilities - server_caps: {}",
+            "0 Raw Server Capabilities - server_caps: {:?}"
+        );
+        // tracing_to_json!(
+        //     &self.capabilities,
+        //     "Client Capabilities - self.capabilities: {}",
+        //     "Raw Client Capabilities - self.capabilities: {}"
+        // );
+
+        if let Ok(json_params) = serde_json::to_string_pretty(&server_caps) {
+            tracing::info!("Server Capabilities - server_caps: {}", json_params);
         } else {
-            tracing::debug!(raw_params = ?params, "Raw Server Capabilities");
-        }
-        if let Ok(json_params) = serde_json::to_string(&self.capabilities) {
-            tracing::info!(params = %json_params, "Client Capabilities");
-        } else {
-            tracing::debug!(raw_params = ?params, "Raw Client Capabilities");
+            tracing::debug!("Raw Server Capabilities - server_caps: {:?}", &server_caps);
         }
 
         // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
