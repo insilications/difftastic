@@ -5,8 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::Result;
-use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, router::Router};
+use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, Result, router::Router};
 use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
@@ -49,8 +48,9 @@ impl Server {
         let mut router = Router::new(this);
         router
             //// Lifecycle ////
-            .request::<request::Initialize, _>(|server, params| server.on_initialize(params))
-            // .request::<request::Initialize, _>(Self::on_initialize)
+            // .request::<request::Initialize, _>(|server, params| std::future::ready(server.on_initialize(params)))
+            // .request::<request::Initialize, _>(|server, params| server.on_initialize(params))
+            .request::<request::Initialize, _>(Self::on_initialize)
             // .request::<request::Initialize, _>(|st, params| {
             //     tracing::debug!("1 req::Initialize");
             //     // tracing_to_json!(&params, "Initialize");
@@ -125,7 +125,10 @@ impl Server {
     }
 
     #[allow(clippy::needless_pass_by_value)]
-    pub async fn on_initialize(&mut self, params: InitializeParams) -> Result<InitializeResult, ResponseError> {
+    pub fn on_initialize(
+        &mut self,
+        params: InitializeParams,
+    ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
         // ) -> Result<InitializeResult, Box<dyn std::error::Error + Send + Sync>> {
         tracing::debug!("1 req::Initialize");
         // tracing_to_json!(&params, "Initialize");
@@ -160,15 +163,20 @@ impl Server {
 
         // self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
 
-        Ok(InitializeResult {
-            capabilities: server_caps,
-            server_info: Some(ServerInfo {
-                name: LSP_SERVER_NAME.into(),
-                version: Some(LSP_SERVER_VERSION.into()),
-            }),
-            // offset_encoding: Some("utf-8".to_string()),
-            offset_encoding: None,
-        })
+        async move {
+            tracing::debug!("2 req::Initialize");
+            tracing_to_json!(&params, "Initialize");
+            self.capabilities = final_caps;
+            Ok(InitializeResult {
+                capabilities: server_caps,
+                server_info: Some(ServerInfo {
+                    name: LSP_SERVER_NAME.into(),
+                    version: Some(LSP_SERVER_VERSION.into()),
+                }),
+                // offset_encoding: Some("utf-8".to_string()),
+                offset_encoding: None,
+            })
+        }
         // ready(Ok(InitializeResult {
         //     capabilities: server_caps,
         //     server_info: Some(ServerInfo {
