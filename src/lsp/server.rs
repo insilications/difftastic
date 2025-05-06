@@ -49,51 +49,47 @@ impl Server {
         let mut router = Router::new(this);
         router
             //// Lifecycle ////
-            .request::<request::Initialize, _>(|st, params| async move {
-                tracing::debug!("req::Initialize");
-                // tracing_to_json!(&params, "Initialize");
-
-                let (server_caps, final_caps) = negotiate_capabilities(&params);
-                st.capabilities = final_caps;
-
-                st.root_path = params
-                    .workspace_folders
-                    .as_ref()
-                    .into_iter()
-                    .flatten()
-                    .next()
-                    .and_then(|ws| ws.uri.to_file_path())
-                    .map_or_else(|| PathBuf::from("."), PathBuf::from);
-
-                tracing::info!("root_path: {}", st.root_path.display());
-
-                // tracing_to_json_pretty!(&server_caps, "Server Capabilities");
-                // tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
-
-                // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
-                // *Arc::get_mut(&mut st.config).expect("No concurrent access yet") = Config::new(st.root_path.clone());
-
-                // if let Some(options) = params.initialization_options {
-                //     if options.as_object().filter(|o| !o.is_empty()).is_some() {
-                //         tracing::debug!("initialization_options: {options}");
-                //         #[allow(unused_must_use)]
-                //         st.on_update_config(UpdateConfigEvent(options));
-                //     }
-                // }
-
-                // st.cache_state = Some(cache::AppStateShared::new(&st.root_path).expect("Failed to create cache
-                // state"));
-
-                Ok(InitializeResult {
-                    capabilities: server_caps,
-                    server_info: Some(ServerInfo {
-                        name: LSP_SERVER_NAME.into(),
-                        version: Some(LSP_SERVER_VERSION.into()),
-                    }),
-                    // offset_encoding: Some("utf-8".to_string()),
-                    offset_encoding: None,
-                })
-            })
+            .request::<request::Initialize, _>(Self::on_initialize)
+            // .request::<request::Initialize, _>(|st, params| {
+            //     tracing::debug!("1 req::Initialize");
+            //     // tracing_to_json!(&params, "Initialize");
+            //     let (server_caps, final_caps) = negotiate_capabilities(&params);
+            //     st.capabilities = final_caps;
+            //     st.root_path = params
+            //         .workspace_folders
+            //         .as_ref()
+            //         .into_iter()
+            //         .flatten()
+            //         .next()
+            //         .and_then(|ws| ws.uri.to_file_path())
+            //         .map_or_else(|| PathBuf::from("."), PathBuf::from);
+            //     tracing::info!("root_path: {}", st.root_path.display());
+            //     // tracing_to_json_pretty!(&server_caps, "Server Capabilities");
+            //     // tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
+            //     // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
+            //     // *Arc::get_mut(&mut st.config).expect("No concurrent access yet") =
+            // Config::new(st.root_path.clone());     // if let Some(options) =
+            // params.initialization_options {     //     if options.as_object().filter(|o|
+            // !o.is_empty()).is_some() {     //         tracing::debug!("initialization_options:
+            // {options}");     //         #[allow(unused_must_use)]
+            //     //         st.on_update_config(UpdateConfigEvent(options));
+            //     //     }
+            //     // }
+            //     // st.cache_state = Some(cache::AppStateShared::new(&st.root_path).expect("Failed to create cache
+            //     // state"));
+            //     async move {
+            //         tracing::debug!("2 req::Initialize");
+            //         tracing_to_json!(&params, "Initialize");
+            //         Ok(InitializeResult {
+            //             capabilities: server_caps,
+            //             server_info: Some(ServerInfo {
+            //                 name: LSP_SERVER_NAME.into(),
+            //                 version: Some(LSP_SERVER_VERSION.into()),
+            //             }),
+            //             offset_encoding: None,
+            //         })
+            //     }
+            // })
             .notification::<notif::Initialized>(Self::on_initialized)
             .request::<request::Shutdown, _>(|_, ()| {
                 tracing::info!("req::Shutdown");
@@ -127,68 +123,77 @@ impl Server {
         }
     }
 
-    // #[allow(clippy::needless_pass_by_value)]
-    // async fn on_initialize(
-    //     &mut self,
-    //     params: InitializeParams,
-    //     // ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
-    // ) -> Result<InitializeResult, Box<dyn std::error::Error + Send + Sync>> {
-    //     tracing::debug!("req::Initialize");
-    //     // tracing_to_json!(&params, "Initialize");
+    #[allow(clippy::needless_pass_by_value)]
+    pub async fn on_initialize(
+        &mut self,
+        params: InitializeParams,
+    ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
+        // ) -> Result<InitializeResult, Box<dyn std::error::Error + Send + Sync>> {
+        tracing::debug!("1 req::Initialize");
+        // tracing_to_json!(&params, "Initialize");
 
-    //     let (server_caps, final_caps) = negotiate_capabilities(&params);
-    //     self.capabilities = final_caps;
+        let (server_caps, final_caps) = negotiate_capabilities(&params);
+        // self.capabilities = final_caps;
 
-    //     self.root_path = params
-    //         .workspace_folders
-    //         .as_ref()
-    //         .into_iter()
-    //         .flatten()
-    //         .next()
-    //         .and_then(|ws| ws.uri.to_file_path())
-    //         .map_or_else(|| PathBuf::from("."), PathBuf::from);
+        // self.root_path = params
+        //     .workspace_folders
+        //     .as_ref()
+        //     .into_iter()
+        //     .flatten()
+        //     .next()
+        //     .and_then(|ws| ws.uri.to_file_path())
+        //     .map_or_else(|| PathBuf::from("."), PathBuf::from);
 
-    //     tracing::info!("root_path: {}", self.root_path.display());
+        // tracing::info!("root_path: {}", self.root_path.display());
 
-    //     // tracing_to_json_pretty!(&server_caps, "Server Capabilities");
-    //     // tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
+        // tracing_to_json_pretty!(&server_caps, "Server Capabilities");
+        // tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
 
-    //     // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
-    //     *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());
+        // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
+        // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());
 
-    //     if let Some(options) = params.initialization_options {
-    //         if options.as_object().filter(|o| !o.is_empty()).is_some() {
-    //             tracing::debug!("initialization_options: {options}");
-    //             #[allow(unused_must_use)]
-    //             self.on_update_config(UpdateConfigEvent(options));
-    //         }
-    //     }
+        // if let Some(options) = params.initialization_options {
+        //     if options.as_object().filter(|o| !o.is_empty()).is_some() {
+        //         tracing::debug!("initialization_options: {options}");
+        //         #[allow(unused_must_use)]
+        //         self.on_update_config(UpdateConfigEvent(options));
+        //     }
+        // }
 
-    //     self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
+        // self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
 
-    //     Ok(InitializeResult {
-    //         capabilities: server_caps,
-    //         server_info: Some(ServerInfo {
-    //             name: LSP_SERVER_NAME.into(),
-    //             version: Some(LSP_SERVER_VERSION.into()),
-    //         }),
-    //         // offset_encoding: Some("utf-8".to_string()),
-    //         offset_encoding: None,
-    //     })
-    // }
+        Ok(InitializeResult {
+            capabilities: server_caps,
+            server_info: Some(ServerInfo {
+                name: LSP_SERVER_NAME.into(),
+                version: Some(LSP_SERVER_VERSION.into()),
+            }),
+            // offset_encoding: Some("utf-8".to_string()),
+            offset_encoding: None,
+        })
+        // ready(Ok(InitializeResult {
+        //     capabilities: server_caps,
+        //     server_info: Some(ServerInfo {
+        //         name: LSP_SERVER_NAME.into(),
+        //         version: Some(LSP_SERVER_VERSION.into()),
+        //     }),
+        //     // offset_encoding: Some("utf-8".to_string()),
+        //     offset_encoding: None,
+        // }))
+    }
 
     #[allow(clippy::unused_self)]
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
         tracing::debug!("notif::Initialized");
 
-        if self.capabilities.workspace_configuration {
-            tokio::spawn({
-                let mut client = self.client.clone();
-                async move {
-                    Self::register_did_change_configuration(&mut client).await;
-                }
-            });
-        }
+        // if self.capabilities.workspace_configuration {
+        //     tokio::spawn({
+        //         let mut client = self.client.clone();
+        //         async move {
+        //             Self::register_did_change_configuration(&mut client).await;
+        //         }
+        //     });
+        // }
 
         ControlFlow::Continue(())
     }

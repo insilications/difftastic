@@ -1,31 +1,10 @@
-// mod capabilities;
-// mod config;
-// mod convert;
-// mod handler;
-// mod lsp_ext;
-// mod meter;
-// mod semantic_tokens;
-// mod server;
-// mod vfs;
-
 use anyhow::{Context, Result};
-// use ide::VfsPath;
-// use lsp_types::Url;
 use async_lsp::{
-    client_monitor::ClientProcessMonitorLayer,
-    concurrency::ConcurrencyLayer,
-    panic::CatchUnwindLayer,
-    server::LifecycleLayer,
-    stdio::{PipeStdin, PipeStdout},
-    tracing::TracingLayer,
+    client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer, panic::CatchUnwindLayer,
+    server::LifecycleLayer, tracing::TracingLayer,
 };
 use tower::ServiceBuilder;
-use tracing::Level;
 
-// pub(crate) use server::{Server, StateSnapshot};
-// pub(crate) use vfs::{LineMap, Vfs};
-// use crate::lsp::meter::MeterLayer;
-// use crate::lsp::server::{Server, StateSnapshot};
 use crate::lsp::server::Server;
 
 //  The file length limit. Files larger than this will be rejected from all interactions.
@@ -81,8 +60,7 @@ pub async fn run_server_stdio() -> Result<()> {
         async_lsp::stdio::PipeStdin::lock_tokio().context("stdin is not pipe-like")?,
         async_lsp::stdio::PipeStdout::lock_tokio().context("stdout is not pipe-like")?,
     );
-    // let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
-    // let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
+
     // Fallback to spawn blocking read/write otherwise.
     #[cfg(not(unix))]
     let (stdin, stdout) = (
@@ -92,20 +70,18 @@ pub async fn run_server_stdio() -> Result<()> {
 
     let (mainloop, _) = async_lsp::MainLoop::new_server(|client| {
         ServiceBuilder::new()
-            // .layer(
-            //     TracingLayer::new()
-            //         .request(|r| tracing::info_span!("request", method = r.method))
-            //         .notification(|n| tracing::info_span!("notification", method = n.method))
-            //         .event(|e| tracing::info_span!("event", method = e.type_name())),
-            // )
-            .layer(TracingLayer::default())
+            .layer(
+                TracingLayer::new()
+                    .request(|r| tracing::info_span!("request", method = r.method))
+                    .notification(|n| tracing::info_span!("notification", method = n.method))
+                    .event(|e| tracing::info_span!("event", method = e.type_name())),
+            )
+            // .layer(TracingLayer::default())
             // .layer(MeterLayer)
             .layer(LifecycleLayer::default())
             .layer(CatchUnwindLayer::default())
-            // TODO: Use `CatchUnwindLayer`.
-            .layer(ConcurrencyLayer::default())
+            .layer(ConcurrencyLayer::new(concurrency))
             .layer(ClientProcessMonitorLayer::new(client.clone()))
-            // .layer(ClientProcessMonitorLayer::new(client))
             .service(Server::new_router(client))
     });
 

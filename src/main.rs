@@ -153,8 +153,8 @@ fn main() {
             .with_max_level(Level::DEBUG)
             .with_ansi(false)
             .with_writer(std::io::stderr)
-            // .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
-            // .compact()
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
+            .compact()
             .init();
 
         // lsp::start_lsp().await;
