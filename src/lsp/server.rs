@@ -49,7 +49,8 @@ impl Server {
         let mut router = Router::new(this);
         router
             //// Lifecycle ////
-            .request::<request::Initialize, _>(Self::on_initialize)
+            .request::<request::Initialize, _>(|server, params| server.on_initialize(params))
+            // .request::<request::Initialize, _>(Self::on_initialize)
             // .request::<request::Initialize, _>(|st, params| {
             //     tracing::debug!("1 req::Initialize");
             //     // tracing_to_json!(&params, "Initialize");
