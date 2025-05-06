@@ -134,7 +134,7 @@ impl Server {
         // tracing_to_json!(&params, "Initialize");
 
         let (server_caps, final_caps) = negotiate_capabilities(&params);
-        // self.capabilities = final_caps;
+        self.capabilities = final_caps;
 
         // self.root_path = params
         //     .workspace_folders
@@ -166,7 +166,6 @@ impl Server {
         async move {
             tracing::debug!("2 req::Initialize");
             tracing_to_json!(&params, "Initialize");
-            self.capabilities = final_caps;
             Ok(InitializeResult {
                 capabilities: server_caps,
                 server_info: Some(ServerInfo {
