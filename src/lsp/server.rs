@@ -124,10 +124,7 @@ impl Server {
     }
 
     #[allow(clippy::needless_pass_by_value)]
-    pub async fn on_initialize(
-        &mut self,
-        params: InitializeParams,
-    ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
+    pub async fn on_initialize(&mut self, params: InitializeParams) -> Result<InitializeResult, ResponseError> {
         // ) -> Result<InitializeResult, Box<dyn std::error::Error + Send + Sync>> {
         tracing::debug!("1 req::Initialize");
         // tracing_to_json!(&params, "Initialize");
