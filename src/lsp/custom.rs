@@ -70,13 +70,7 @@ pub async fn run_server_stdio() -> Result<()> {
 
     let (mainloop, _) = async_lsp::MainLoop::new_server(|client| {
         ServiceBuilder::new()
-            .layer(
-                TracingLayer::new()
-                    .request(|r| tracing::info_span!("request", method = r.method))
-                    .notification(|n| tracing::info_span!("notification", method = n.method))
-                    .event(|e| tracing::info_span!("event", method = e.type_name())),
-            )
-            // .layer(TracingLayer::default())
+            .layer(TracingLayer::default())
             // .layer(MeterLayer)
             .layer(LifecycleLayer::default())
             .layer(CatchUnwindLayer::default())

@@ -260,7 +260,6 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
 
 pub struct AppStateShared {
     repo: Arc<Repository>, // Repository is Send+Sync, Arc is fine
-    // repo: Option<Arc<Repository>>,
     versions: SharedVersionStore,
     revs: SharedRevStore,
 }
