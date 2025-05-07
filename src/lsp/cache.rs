@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use anyhow::{Context, Result};
@@ -168,7 +168,7 @@ type RevStore = HashMap<FilePath, RevIndexPerPath>;
 // Use RwLock if reads are much more frequent than writes
 type SharedVersionStore = Arc<RwLock<HashMap<VersionKey, FileVersion>>>;
 type SharedRevStore = Arc<RwLock<HashMap<FilePath, RevIndexPerPath>>>;
-type SharedRepo = Arc<RwLock<Repository>>;
+type SharedRepo = Arc<Mutex<Repository>>;
 
 // ────────────────────────────────────────────────────────────────────────────────
 //  3. Helper functions
@@ -260,52 +260,61 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
 }
 
 pub struct CacheStateShared {
-    repo: SharedRepo, // `SharedRepo` = `Arc<RwLock<Repository>>`. `Repository` is `Send`, but not `Sync`.
+    repo: Option<SharedRepo>, // `SharedRepo` = `Arc<Mutex<Repository>>`. `Repository` is `Send`, but not `Sync`.
     versions: SharedVersionStore,
     revs: SharedRevStore,
 }
 
 impl CacheStateShared {
-    pub fn new(repo_path: &Path) -> Result<Self> {
-        let repo = Repository::open(repo_path)?;
+    pub fn new() -> Result<Self> {
         Ok(Self {
-            repo: Arc::new(RwLock::new(repo)),
+            repo: None, // Set to None initially.
             // Initialize empty HashMaps inside RwLock and Arc
             versions: Arc::new(RwLock::new(HashMap::new())),
             revs: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
+    pub fn set_repo(&mut self, repo_path: &Path) -> Result<()> {
+        let repo = Repository::open(repo_path)?;
+        self.repo = Some(Arc::new(Mutex::new(repo)));
+        // *self.repo.lock().expect("Repo mutex poisoned") = Some(Arc::new(Mutex::new(repo)));
+        Ok(())
+    }
+
     // Method to populate - takes &self because mutation happens *inside* the locks
     pub fn populate_history(&self, rev: &str, path: &Path) -> Result<()> {
-        let repo_guard = self.repo.read().expect("Version store lock poisoned");
+        let history = {
+            // let repo = self.repo.as_ref().unwrap();
+            let repo_guard = self.repo.as_ref().unwrap().lock().expect("Repo mutex poisoned");
+            commits_touching_path(&*repo_guard, rev, path)?
+        }; // ← repo_guard lock released right here
+        {
+            // Consider using .write().map_err(...) for better error handling.
+            let mut versions_guard = self.versions.write().expect("Version store lock poisoned");
+            let mut revs_guard = self.revs.write().expect("Rev store lock poisoned");
 
-        let history = commits_touching_path(&*repo_guard, rev, path)?;
+            let mut index = 1;
+            for (summary_str, oid, maybe_content) in history {
+                let commit = CommitId::from_hex(&oid.to_string()).map_err(anyhow::Error::msg)?;
+                let revspec = format!("HEAD~{index}");
+                let content_arc = maybe_content.unwrap_or_else(|| Arc::<str>::from(""));
+                let summary_arc = Arc::<str>::from(summary_str);
 
-        // Consider using .write().map_err(...) for better error handling.
-        let mut versions_guard = self.versions.write().expect("Version store lock poisoned");
-        let mut revs_guard = self.revs.write().expect("Rev store lock poisoned");
-
-        let mut index = 1;
-        for (summary_str, oid, maybe_content) in history {
-            let commit = CommitId::from_hex(&oid.to_string()).map_err(anyhow::Error::msg)?;
-            let revspec = format!("HEAD~{index}");
-            let content_arc = maybe_content.unwrap_or_else(|| Arc::<str>::from(""));
-            let summary_arc = Arc::<str>::from(summary_str);
-
-            // Pass mutable references obtained from the lock guards
-            put_version(
-                &mut *versions_guard, // Dereference the guard
-                &mut *revs_guard,     // Dereference the guard
-                path.to_path_buf(),
-                commit,
-                revspec,
-                &content_arc,
-                &summary_arc,
-            );
-            index += 1;
+                // Pass mutable references obtained from the lock guards
+                put_version(
+                    &mut *versions_guard, // Dereference the guard
+                    &mut *revs_guard,     // Dereference the guard
+                    path.to_path_buf(),
+                    commit,
+                    revspec,
+                    &content_arc,
+                    &summary_arc,
+                );
+                index += 1;
+            }
+            // Locks are automatically released when versions_guard and revs_guard go out of scope
         }
-        // Locks are automatically released when versions_guard and revs_guard go out of scope
         Ok(())
     }
 
@@ -337,7 +346,7 @@ impl CacheStateShared {
     #[allow(dead_code)]
     pub fn clone_state(&self) -> Self {
         Self {
-            repo: Arc::clone(&self.repo),
+            repo: Some(Arc::clone(self.repo.as_ref().unwrap())),
             versions: Arc::clone(&self.versions),
             revs: Arc::clone(&self.revs),
         }

@@ -38,7 +38,7 @@ pub struct Server {
     client: ClientSocket,
     // States.
     config: Arc<Config>,
-    cache_state: Option<cache::CacheStateShared>,
+    cache_state: cache::CacheStateShared,
     root_path: PathBuf,
     capabilities: NegotiatedCapabilities,
 }
@@ -76,7 +76,7 @@ impl Server {
         Self {
             config: Arc::new(Config::new("/non-existing-path".into())),
             client,
-            cache_state: None,
+            cache_state: cache::CacheStateShared::new().expect("Failed to create cache state"),
             root_path: PathBuf::new(),
             capabilities: NegotiatedCapabilities::default(),
         }
@@ -117,7 +117,10 @@ impl Server {
             }
         }
 
-        self.cache_state = Some(cache::CacheStateShared::new(&self.root_path).expect("Failed to create cache state"));
+        // self.cache_state = Some(cache::CacheStateShared::new(&self.root_path).expect(
+        //     "Failed to create cache
+        // state",
+        // ));
 
         async move {
             tracing::debug!("req::Initialize");
@@ -174,12 +177,6 @@ impl Server {
                 ))
             })
             .unwrap();
-
-        // let _ = self
-        //     .cache_state
-        //     .as_ref()
-        //     .unwrap()
-        //     .populate_history(&params.rev, &relative_stripped_path);
 
         tracing::debug!(
             "params.rev: {} - relative_stripped_path: {}",
