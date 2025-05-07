@@ -168,6 +168,7 @@ type RevStore = HashMap<FilePath, RevIndexPerPath>;
 // Use RwLock if reads are much more frequent than writes
 type SharedVersionStore = Arc<RwLock<HashMap<VersionKey, FileVersion>>>;
 type SharedRevStore = Arc<RwLock<HashMap<FilePath, RevIndexPerPath>>>;
+type SharedRepo = Arc<RwLock<Repository>>;
 
 // ────────────────────────────────────────────────────────────────────────────────
 //  3. Helper functions
@@ -258,19 +259,17 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
     }
 }
 
-pub struct AppStateShared {
-    repo: Arc<Repository>, // Repository is Send+Sync, Arc is fine
+pub struct CacheStateShared {
+    repo: SharedRepo, // `SharedRepo` = `Arc<RwLock<Repository>>`. `Repository` is `Send`, but not `Sync`.
     versions: SharedVersionStore,
     revs: SharedRevStore,
 }
 
-impl AppStateShared {
-    // pub fn new(repo_path: PathBuf) -> Result<Self> {
+impl CacheStateShared {
     pub fn new(repo_path: &Path) -> Result<Self> {
         let repo = Repository::open(repo_path)?;
         Ok(Self {
-            repo: Arc::new(repo),
-            // repo: None,
+            repo: Arc::new(RwLock::new(repo)),
             // Initialize empty HashMaps inside RwLock and Arc
             versions: Arc::new(RwLock::new(HashMap::new())),
             revs: Arc::new(RwLock::new(HashMap::new())),
@@ -279,20 +278,10 @@ impl AppStateShared {
 
     // Method to populate - takes &self because mutation happens *inside* the locks
     pub fn populate_history(&self, rev: &str, path: &Path) -> Result<()> {
-        // let repo = self
-        //     .repo
-        //     .as_ref()
-        //     .ok_or_else(|| anyhow::anyhow!("Repository not initialized"))?;
-        // let repo_handle = Arc::clone(repo);
-        // EXPLAIN CLONE???
-        let repo_handle = Arc::clone(&self.repo);
+        let repo_guard = self.repo.read().expect("Version store lock poisoned");
 
-        // Pass dereferenced repo handle to the function
-        let history = commits_touching_path(&*repo_handle, rev, path)?;
+        let history = commits_touching_path(&*repo_guard, rev, path)?;
 
-        // Lock the stores for writing
-        // Use .write().unwrap() - unwrap panics if the lock is "poisoned"
-        // (i.e., a thread panicked while holding the lock).
         // Consider using .write().map_err(...) for better error handling.
         let mut versions_guard = self.versions.write().expect("Version store lock poisoned");
         let mut revs_guard = self.revs.write().expect("Rev store lock poisoned");

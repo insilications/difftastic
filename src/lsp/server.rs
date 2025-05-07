@@ -38,7 +38,7 @@ pub struct Server {
     client: ClientSocket,
     // States.
     config: Arc<Config>,
-    cache_state: Option<cache::AppStateShared>,
+    cache_state: Option<cache::CacheStateShared>,
     root_path: PathBuf,
     capabilities: NegotiatedCapabilities,
 }
@@ -117,7 +117,7 @@ impl Server {
             }
         }
 
-        self.cache_state = Some(cache::AppStateShared::new(&self.root_path).expect("Failed to create cache state"));
+        self.cache_state = Some(cache::CacheStateShared::new(&self.root_path).expect("Failed to create cache state"));
 
         async move {
             tracing::debug!("req::Initialize");
