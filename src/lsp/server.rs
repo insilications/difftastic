@@ -14,6 +14,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, router::Router};
+use gxhash::gxhash64;
 use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
@@ -44,6 +45,7 @@ struct UpdateConfigEvent(serde_json::Value);
 
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
 const LSP_SERVER_VERSION: &str = "0.1.0";
+const GXHASH_SEED: i64 = 0x87FA_3129;
 
 #[derive(Debug, Default)]
 struct OpenedFilesData {
@@ -107,6 +109,7 @@ impl Server {
             root_path: PathBuf::new(),
             capabilities: NegotiatedCapabilities::default(),
             opened_files: HashMap::new(),
+            vfs: vfs::Vfs::default(),
         }
     }
 
@@ -286,23 +289,30 @@ impl Server {
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
+        let uri: &Uri = &params.text_document.uri;
+
         tracing::debug!(
             "notif::DidOpenTextDocument - params.text_document.uri: {} - params.text_document.language_id: {} - params.text_document.version: {}",
-            params.text_document.uri.to_file_path().unwrap_or_default().display(),
+            uri.to_file_path().unwrap_or_default().display(),
             params.text_document.language_id,
             params.text_document.version
         );
 
-        // let file_path = params.text_document.uri.to_file_path().unwrap_or_default();
+        let file_path = uri.to_file_path().unwrap_or_default();
 
         self.opened_files
             .insert(file_path.into_owned(), OpenedFilesData::default());
 
-        self.vfs.open(
-            params.text_document.uri.clone(),
-            params.text_document.version,
-            &params.text_document.text,
-        );
+        self.vfs
+            .open(uri.clone(), params.text_document.version, &params.text_document.text);
+
+        // let txt = self.vfs.get_text(uri).unwrap_or_default();
+        // tracing::debug!("notif::DidOpenTextDocument - self.vfs.get_text: {}", txt);
+
+        let txt_bytes: &[u8] = params.text_document.text.as_bytes();
+        let txt_hash = gxhash64(txt_bytes, GXHASH_SEED);
+        tracing::debug!("notif::DidOpenTextDocument - txt_hash: {:#x}", txt_hash);
+
         ControlFlow::Continue(())
     }
 
@@ -320,11 +330,18 @@ impl Server {
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_change(&mut self, params: DidChangeTextDocumentParams) -> NotifyResult {
-        let file_path = params.text_document.uri.to_file_path().unwrap_or_default();
+        let uri: &Uri = &params.text_document.uri;
+        let file_path = uri.to_file_path().unwrap_or_default();
         let file_path_display = file_path.display();
+
+        let txt1 = self.vfs.get_text(uri).unwrap_or_default();
+        // tracing::debug!("notif::DidChangeTextDocument - 1 self.vfs.get_text: {}", txt1);
+        let txt1_bytes: &[u8] = txt1.as_bytes();
+        let txt1_hash = gxhash64(txt1_bytes, GXHASH_SEED);
+        tracing::debug!("notif::DidChangeTextDocument - txt1_hash: {:#x}", txt1_hash);
+
         tracing::debug!(
-            "notif::DidChangeTextDocument - params.text_document.uri: {} - params.text_document.version: {} -
-        params.content_changes.len(): {}",
+            "notif::DidChangeTextDocument - params.text_document.uri: {} - params.text_document.version: {} - params.content_changes.len(): {}",
             file_path_display,
             params.text_document.version,
             params.content_changes.len()
@@ -333,6 +350,19 @@ impl Server {
             tracing::debug!("{} - content_change.range: {:?}", file_path_display, c.range);
             tracing::debug!("{} - content_change.text: {}", file_path_display, c.text);
         }
+
+        if let Err(e) = self
+            .vfs
+            .apply_changes(uri, params.text_document.version, &params.content_changes)
+        {
+            tracing::error!("Failed to apply changes for {}: {e:#}", file_path_display);
+        }
+
+        let txt2 = self.vfs.get_text(uri).unwrap_or_default();
+        // tracing::debug!("notif::DidChangeTextDocument - 2 self.vfs.get_text: {}", txt2);
+        let txt2_bytes: &[u8] = txt2.as_bytes();
+        let txt2_hash = gxhash64(txt2_bytes, GXHASH_SEED);
+        tracing::debug!("notif::DidChangeTextDocument - txt2_hash: {:#x}", txt2_hash);
 
         ControlFlow::Continue(())
     }
@@ -639,11 +669,12 @@ pub fn on_did_open_custom(
             Arc::strong_count(&version.content), // Count on the cloned Arc
             Arc::strong_count(&version.summary)  // Count on the cloned Arc
         );
-        tracing::debug!("Path           : {}", relative_stripped_path.display());
-        tracing::debug!("Revspec        : {}", params.rev);
-        tracing::debug!("Commit         : {}", commit_id.short());
-        tracing::debug!("Summary        : {}", version.summary);
-        tracing::debug!("Content Length : {}", version.content.len());
+        tracing::debug!("Path           : {}", &relative_stripped_path.display());
+        tracing::debug!("Revspec        : {}", &params.rev);
+        // &commit_id.short() VS commit_id.short()
+        tracing::debug!("Commit         : {}", &commit_id.short());
+        tracing::debug!("Summary        : {}", &version.summary);
+        tracing::debug!("Content Length : {}", &version.content.len());
 
         match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
             Ok(diff_result) => {

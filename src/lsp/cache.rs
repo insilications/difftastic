@@ -170,6 +170,12 @@ type SharedVersionStore = Arc<RwLock<HashMap<VersionKey, FileVersion>>>;
 type SharedRevStore = Arc<RwLock<HashMap<FilePath, RevIndexPerPath>>>;
 type SharedRepo = Arc<Mutex<Repository>>;
 
+// SharedRevStore = Arc<RwLock<HashMap<FilePath, RevIndexPerPath>>>
+// FilePath -> (Revspec -> CommitId)
+
+// SharedVersionStore = Arc<RwLock<HashMap<VersionKey, FileVersion>>>
+// VersionKey(CommitId, FilePath) -> FileVersion(content, summary)
+
 // ────────────────────────────────────────────────────────────────────────────────
 //  3. Helper functions
 // ────────────────────────────────────────────────────────────────────────────────
@@ -187,8 +193,6 @@ fn put_version(
     revspec: RevSpec,
     content: &Arc<str>,
     summary: &Arc<str>,
-    // content: Arc<str>
-    // summary: Arc<str>
 ) {
     // 1) Create one shared PathBuf
     let path_arc = Arc::new(path);
@@ -283,11 +287,11 @@ impl CacheStateShared {
     }
 
     // Method to populate - takes &self because mutation happens *inside* the locks
-    pub fn populate_history(&self, rev: &str, path: &Path) -> Result<()> {
+    pub fn populate_history(&self, revspec: &str, path: &Path) -> Result<()> {
+        // Check if self.repo is set
         let history = {
-            // let repo = self.repo.as_ref().unwrap();
             let repo_guard = self.repo.as_ref().unwrap().lock().expect("Repo mutex poisoned");
-            commits_touching_path(&*repo_guard, rev, path)?
+            commits_touching_path(&*repo_guard, revspec, path)?
         }; // ← repo_guard lock released right here
         {
             // Maybe use .write().map_err(...) for better error handling.
@@ -329,7 +333,7 @@ impl CacheStateShared {
         // returned by lookup is tied to the lifetime of the lock guard.
         // Returning the owned FileVersion avoids lifetime issues.
         lookup(&*versions_guard, &*revs_guard, path, revspec)
-            .map(|(commit_id, file_version_ref)| (commit_id, file_version_ref.clone())) // Clone FileVersion
+            .map(|(commit_id, file_version_ref)| (commit_id, file_version_ref.clone())) // Clone FileVersion?? Maybe not needed
     }
 
     /// Method to iterate - takes &self, uses read locks
