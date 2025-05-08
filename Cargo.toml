@@ -154,6 +154,7 @@ git2 = { version = "0.20.1", features = ["vendored-libgit2"] }
 phf = { version = "0.11.3", features = ["macros"] }
 macro_rules_attribute = "0.2.0"
 ropey = { git = "https://github.com/cessen/ropey.git", branch = "master" }
+unicode-segmentation = "1.12.0"
 
 [dev-dependencies]
 async-io = "2.4.0"
