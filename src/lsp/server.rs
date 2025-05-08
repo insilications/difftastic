@@ -46,6 +46,7 @@ const LSP_SERVER_VERSION: &str = "0.1.0";
 #[derive(Debug)]
 pub struct StateSnapshot {
     pub config: Arc<Config>,
+    pub cache_state: cache::CacheStateShared,
     pub root_path: PathBuf,
 }
 
@@ -76,8 +77,8 @@ impl Server {
                 ControlFlow::Break(Ok(()))
             })
             //// Requests ////
-            // .request_snap::<lsp_ext::DidOpenTextDocumentCustom>(on_did_open_custom)
-            .request::<lsp_ext::DidOpenTextDocumentCustom, _>(Self::on_did_open_custom)
+            .request_snap::<lsp_ext::DidOpenTextDocumentCustom>(on_did_open_custom)
+            // .request::<lsp_ext::DidOpenTextDocumentCustom, _>(Self::on_did_open_custom)
             //// Notifications ////
             .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
             .notification::<notif::DidCloseTextDocument>(Self::on_did_close)
@@ -186,91 +187,91 @@ impl Server {
         ControlFlow::Continue(())
     }
 
-    #[allow(clippy::needless_pass_by_value)]
-    fn on_did_open_custom(
-        &mut self,
-        params: lsp_ext::DidOpenTextDocumentCustomParams,
-    ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
-        tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
+    // #[allow(clippy::needless_pass_by_value)]
+    // fn on_did_open_custom(
+    //     &mut self,
+    //     params: lsp_ext::DidOpenTextDocumentCustomParams,
+    // ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
+    //     tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
 
-        let relative_stripped_path = Path::new(&params.text_document.uri)
-            .strip_prefix(&self.root_path)
-            .map_err(|err| {
-                tracing::error!("Failed to strip prefix: {err}");
-                ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
-                    ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
-                ))
-            })
-            .unwrap();
+    //     let relative_stripped_path = Path::new(&params.text_document.uri)
+    //         .strip_prefix(&self.root_path)
+    //         .map_err(|err| {
+    //             tracing::error!("Failed to strip prefix: {err}");
+    //             ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
+    //                 ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
+    //             ))
+    //         })
+    //         .unwrap();
 
-        tracing::debug!(
-            "params.rev: {} - relative_stripped_path: {}",
-            &params.rev,
-            relative_stripped_path.display()
-        );
+    //     tracing::debug!(
+    //         "params.rev: {} - relative_stripped_path: {}",
+    //         &params.rev,
+    //         relative_stripped_path.display()
+    //     );
 
-        // Handle the Result returned by populate_history
-        if let Err(err) = self.cache_state.populate_history(&params.rev, relative_stripped_path) {
-            tracing::error!("Failed to populate history: {err}");
-            return ready(Err(ResponseError::new(
-                ErrorCode::REQUEST_FAILED,
-                format!("Failed to populate history: {err}"),
-            )));
-        }
-        // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
+    //     // Handle the Result returned by populate_history
+    //     if let Err(err) = self.cache_state.populate_history(&params.rev, relative_stripped_path) {
+    //         tracing::error!("Failed to populate history: {err}");
+    //         return ready(Err(ResponseError::new(
+    //             ErrorCode::REQUEST_FAILED,
+    //             format!("Failed to populate history: {err}"),
+    //         )));
+    //     }
+    //     // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
 
-        // self.cache_state
-        //     .as_ref()
-        //     .unwrap()
-        //     .iterate_path_versions(&relative_stripped_path);
+    //     // self.cache_state
+    //     //     .as_ref()
+    //     //     .unwrap()
+    //     //     .iterate_path_versions(&relative_stripped_path);
 
-        let rhs_path_buf = PathBuf::from(&relative_stripped_path);
+    //     let rhs_path_buf = PathBuf::from(&relative_stripped_path);
 
-        // Note: lookup_version now returns an owned FileVersion due to cloning
-        if let Some((commit_id, version)) = self.cache_state.lookup_version(relative_stripped_path, &params.rev) {
-            // Arc counts inside the cloned FileVersion will reflect sharing
-            tracing::debug!(
-                "Arc Counts : content: {} - summary: {}",
-                Arc::strong_count(&version.content), // Count on the cloned Arc
-                Arc::strong_count(&version.summary)  // Count on the cloned Arc
-            );
-            tracing::debug!("Path           : {}", relative_stripped_path.display());
-            tracing::debug!("Revspec        : {}", params.rev);
-            tracing::debug!("Commit         : {}", commit_id.short());
-            tracing::debug!("Summary        : {}", version.summary);
-            tracing::debug!("Content Length : {}", version.content.len());
+    //     // Note: lookup_version now returns an owned FileVersion due to cloning
+    //     if let Some((commit_id, version)) = self.cache_state.lookup_version(relative_stripped_path, &params.rev) {
+    //         // Arc counts inside the cloned FileVersion will reflect sharing
+    //         tracing::debug!(
+    //             "Arc Counts : content: {} - summary: {}",
+    //             Arc::strong_count(&version.content), // Count on the cloned Arc
+    //             Arc::strong_count(&version.summary)  // Count on the cloned Arc
+    //         );
+    //         tracing::debug!("Path           : {}", relative_stripped_path.display());
+    //         tracing::debug!("Revspec        : {}", params.rev);
+    //         tracing::debug!("Commit         : {}", commit_id.short());
+    //         tracing::debug!("Summary        : {}", version.summary);
+    //         tracing::debug!("Content Length : {}", version.content.len());
 
-            match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
-                Ok(diff_result) => {
-                    if diff_result.has_reportable_change() {
-                        ready(Ok(Some(lsp_ext::DiffRangesResponse {
-                            ranges: diffresult_to_ranges(&diff_result),
-                        })))
-                        // match json3::print(&diff_result) {
-                        //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
-                        //     Err(err) => {
-                        //         tracing::error!("Failed to serialize lsp_ext::DiffRangesResponse: {err}");
-                        //         ready(Err(ResponseError::new(
-                        //             ErrorCode::INTERNAL_ERROR,
-                        //             format!("Failed to serialize lsp_ext::DiffRangesResponse: {err}"),
-                        //         )))
-                        //     }
-                        // }
-                    } else {
-                        tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
-                        ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
-                    }
-                }
-                Err(err) => ready(Err(err)),
-            }
-        } else {
-            tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
-            ready(Err(ResponseError::new(
-                ErrorCode::REQUEST_FAILED,
-                format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
-            )))
-        }
-    }
+    //         match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
+    //             Ok(diff_result) => {
+    //                 if diff_result.has_reportable_change() {
+    //                     ready(Ok(Some(lsp_ext::DiffRangesResponse {
+    //                         ranges: diffresult_to_ranges(&diff_result),
+    //                     })))
+    //                     // match json3::print(&diff_result) {
+    //                     //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
+    //                     //     Err(err) => {
+    //                     //         tracing::error!("Failed to serialize lsp_ext::DiffRangesResponse: {err}");
+    //                     //         ready(Err(ResponseError::new(
+    //                     //             ErrorCode::INTERNAL_ERROR,
+    //                     //             format!("Failed to serialize lsp_ext::DiffRangesResponse: {err}"),
+    //                     //         )))
+    //                     //     }
+    //                     // }
+    //                 } else {
+    //                     tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
+    //                     ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
+    //                 }
+    //             }
+    //             Err(err) => ready(Err(err)),
+    //         }
+    //     } else {
+    //         tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
+    //         ready(Err(ResponseError::new(
+    //             ErrorCode::REQUEST_FAILED,
+    //             format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
+    //         )))
+    //     }
+    // }
 
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
@@ -400,11 +401,53 @@ impl Server {
         tracing::info!("Registered DidChangeConfiguration");
     }
 
-    /// Create a blocking task with a database snapshot as the input.
-    // NB. `spawn_blocking` must be called immediately after snapshotting, so that the read guard
-    // held in `Analysis` is sent out of the async runtime worker. Otherwise, the read guard
-    // is held by the async runtime, and the next `apply_change` acquiring the write guard would
-    // deadlock.
+    fn spawn_update_diff_cache(&mut self) {
+        // self.diagnostic_version += 1;
+        // let version = self.diagnostic_version;
+
+        // let client = self.client.clone();
+        // let opened_files = {
+        //     let vfs = self.vfs.read().unwrap();
+        //     self.opened_files
+        //         .keys()
+        //         .filter_map(|uri| {
+        //             let file = vfs.file_for_uri(uri).ok()?;
+        //             let line_map = vfs.line_map_for_file(file);
+        //             Some((uri.clone(), file, line_map))
+        //         })
+        //         .collect::<Vec<_>>()
+        // };
+
+        // self.spawn_with_snapshot(move |snap| {
+        //     let ret = with_catch_unwind("diagnostics", || {
+        //         opened_files
+        //             .into_iter()
+        //             .map(|(uri, file, line_map)| {
+        //                 let diags = if !snap.config.diagnostics_excluded_files.contains(&uri) {
+        //                     let mut diags = snap.analysis.diagnostics(file)?;
+        //                     diags.retain(|diag| {
+        //                         !snap.config.diagnostics_ignored.contains(diag.code())
+        //                     });
+        //                     diags.truncate(MAX_DIAGNOSTICS_CNT);
+        //                     convert::to_diagnostics(&uri, file, &line_map, &diags)
+        //                 } else {
+        //                     Vec::new()
+        //                 };
+        //                 Ok((uri, diags))
+        //             })
+        //             .collect::<Result<Vec<_>>>()
+        //     });
+        //     match ret {
+        //         Ok(diags) => {
+        //             let _: Result<_, _> = client.emit(UpdateDiagnostics(version, diags));
+        //         }
+        //         // Ignore cancellations caused by editing.
+        //         Err(err) if err.is::<Cancelled>() => {}
+        //         Err(err) => tracing::error!("Failed to update diagnostics: {err:#}"),
+        //     }
+        // });
+    }
+
     fn spawn_with_snapshot<T: Send + 'static>(
         &self,
         f: impl FnOnce(StateSnapshot) -> T + Send + 'static,
@@ -413,6 +456,7 @@ impl Server {
             // analysis: self.host.snapshot(),
             // vfs: Arc::clone(&self.vfs),
             config: Arc::clone(&self.config),
+            cache_state: self.cache_state.clone(),
             // cache_state: cache::CacheStateShared,
             // root_path: PathBuf::from(&self.root_path),
             root_path: self.root_path.clone(),
@@ -527,87 +571,91 @@ impl std::fmt::Display for Cancelled {
 
 impl std::error::Error for Cancelled {}
 
-// pub fn on_did_open_custom(
-//     snap: StateSnapshot,
-//     params: lsp_ext::DidOpenTextDocumentCustomParams,
-// ) -> Result<Option<lsp_ext::DiffRangesResponse>> {
-//     tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
+#[allow(clippy::needless_pass_by_value)]
+pub fn on_did_open_custom(
+    snap: StateSnapshot,
+    params: lsp_ext::DidOpenTextDocumentCustomParams,
+) -> Result<Option<lsp_ext::DiffRangesResponse>> {
+    tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
 
-//     let relative_stripped_path = Path::new(&params.text_document.uri)
-//         .strip_prefix(&self.root_path)
-//         .map_err(|err| {
-//             tracing::error!("Failed to strip prefix: {err}");
-//             ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
-//                 ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
-//             ))
-//         })
-//         .unwrap();
+    let relative_stripped_path = Path::new(&params.text_document.uri)
+        .strip_prefix(&snap.root_path)
+        .map_err(|err| {
+            tracing::error!("Failed to strip prefix: {err}");
+            ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
+                ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
+            ))
+        })
+        .unwrap();
 
-//     tracing::debug!(
-//         "params.rev: {} - relative_stripped_path: {}",
-//         &params.rev,
-//         relative_stripped_path.display()
-//     );
+    tracing::debug!(
+        "params.rev: {} - relative_stripped_path: {}",
+        &params.rev,
+        relative_stripped_path.display()
+    );
 
-//     // Handle the Result returned by populate_history
-//     if let Err(err) = self.cache_state.populate_history(&params.rev, relative_stripped_path) {
-//         tracing::error!("Failed to populate history: {err}");
-//         return ready(Err(ResponseError::new(
-//             ErrorCode::REQUEST_FAILED,
-//             format!("Failed to populate history: {err}"),
-//         )));
-//     }
-//     // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
+    // Handle the Result returned by populate_history
+    if let Err(err) = snap.cache_state.populate_history(&params.rev, relative_stripped_path) {
+        tracing::error!("Failed to populate history: {err}");
+        return Err(anyhow::Error::new(ResponseError::new(
+            ErrorCode::REQUEST_FAILED,
+            format!("Failed to populate history: {err}"),
+        )));
+    }
+    // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
 
-//     // self.cache_state
-//     //     .as_ref()
-//     //     .unwrap()
-//     //     .iterate_path_versions(&relative_stripped_path);
+    // snap.cache_state
+    //     .as_ref()
+    //     .unwrap()
+    //     .iterate_path_versions(&relative_stripped_path);
 
-//     let rhs_path_buf = PathBuf::from(&relative_stripped_path);
+    let rhs_path_buf = PathBuf::from(&relative_stripped_path);
 
-//     // Note: lookup_version now returns an owned FileVersion due to cloning
-//     if let Some((commit_id, version)) = self.cache_state.lookup_version(relative_stripped_path, &params.rev) {
-//         // Arc counts inside the cloned FileVersion will reflect sharing
-//         tracing::debug!(
-//             "Arc Counts : content: {} - summary: {}",
-//             Arc::strong_count(&version.content), // Count on the cloned Arc
-//             Arc::strong_count(&version.summary)  // Count on the cloned Arc
-//         );
-//         tracing::debug!("Path           : {}", relative_stripped_path.display());
-//         tracing::debug!("Revspec        : {}", params.rev);
-//         tracing::debug!("Commit         : {}", commit_id.short());
-//         tracing::debug!("Summary        : {}", version.summary);
-//         tracing::debug!("Content Length : {}", version.content.len());
+    // Note: lookup_version now returns an owned FileVersion due to cloning
+    if let Some((commit_id, version)) = snap.cache_state.lookup_version(relative_stripped_path, &params.rev) {
+        // Arc counts inside the cloned FileVersion will reflect sharing
+        tracing::debug!(
+            "Arc Counts : content: {} - summary: {}",
+            Arc::strong_count(&version.content), // Count on the cloned Arc
+            Arc::strong_count(&version.summary)  // Count on the cloned Arc
+        );
+        tracing::debug!("Path           : {}", relative_stripped_path.display());
+        tracing::debug!("Revspec        : {}", params.rev);
+        tracing::debug!("Commit         : {}", commit_id.short());
+        tracing::debug!("Summary        : {}", version.summary);
+        tracing::debug!("Content Length : {}", version.content.len());
 
-//         match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
-//             Ok(diff_result) => {
-//                 if diff_result.has_reportable_change() {
-//                     ready(Ok(Some(lsp_ext::DiffRangesResponse {
-//                         ranges: diffresult_to_ranges(&diff_result),
-//                     })))
-//                     // match json3::print(&diff_result) {
-//                     //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
-//                     //     Err(err) => {
-//                     //         tracing::error!("Failed to serialize lsp_ext::DiffRangesResponse: {err}");
-//                     //         ready(Err(ResponseError::new(
-//                     //             ErrorCode::INTERNAL_ERROR,
-//                     //             format!("Failed to serialize lsp_ext::DiffRangesResponse: {err}"),
-//                     //         )))
-//                     //     }
-//                     // }
-//                 } else {
-//                     tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
-//                     ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
-//                 }
-//             }
-//             Err(err) => ready(Err(err)),
-//         }
-//     } else {
-//         tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
-//         ready(Err(ResponseError::new(
-//             ErrorCode::REQUEST_FAILED,
-//             format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
-//         )))
-//     }
-// }
+        match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
+            Ok(diff_result) => {
+                if diff_result.has_reportable_change() {
+                    Ok(Some(lsp_ext::DiffRangesResponse {
+                        ranges: diffresult_to_ranges(&diff_result),
+                    }))
+                    // match json3::print(&diff_result) {
+                    //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
+                    //     Err(err) => {
+                    //         tracing::error!("Failed to serialize lsp_ext::DiffRangesResponse: {err}");
+                    //         ready(Err(ResponseError::new(
+                    //             ErrorCode::INTERNAL_ERROR,
+                    //             format!("Failed to serialize lsp_ext::DiffRangesResponse: {err}"),
+                    //         )))
+                    //     }
+                    // }
+                } else {
+                    tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
+                    Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] }))
+                }
+            }
+            Err(err) => Err(anyhow::Error::new(ResponseError::new(
+                ErrorCode::REQUEST_FAILED,
+                format!("{err}"),
+            ))),
+        }
+    } else {
+        tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
+        Err(anyhow::Error::new(ResponseError::new(
+            ErrorCode::REQUEST_FAILED,
+            format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
+        )))
+    }
+}

@@ -259,6 +259,7 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
     }
 }
 
+#[derive(Clone)]
 pub struct CacheStateShared {
     repo: Option<SharedRepo>, // `SharedRepo` = `Arc<Mutex<Repository>>`. `Repository` is `Send`, but not `Sync`.
     versions: SharedVersionStore,
@@ -340,14 +341,67 @@ impl CacheStateShared {
         // tied to the lock guard's lifetime, which is fine here.
         iterate_lookup(&*versions_guard, &*revs_guard, path);
     }
+}
 
-    /// Method to clone the state for sharing (cheap Arc clones)
-    #[allow(dead_code)]
-    pub fn clone_state(&self) -> Self {
-        Self {
-            repo: Some(Arc::clone(self.repo.as_ref().unwrap())),
-            versions: Arc::clone(&self.versions),
-            revs: Arc::clone(&self.revs),
+impl std::fmt::Debug for CacheStateShared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Start building the debug representation for a struct.
+        // The string "CacheStateShared" is the name of the struct.
+        let mut ds = f.debug_struct("CacheStateShared");
+
+        // Handle the 'repo' field: Option<Arc<Mutex<Repository>>>
+        match &self.repo {
+            Some(repo_mutex_arc) => {
+                // The repo is present, try to lock the Mutex.
+                match repo_mutex_arc.lock() {
+                    Ok(repo_guard) => {
+                        // Successfully locked. git2::Repository doesn't implement Debug.
+                        // We'll print its path. repo_guard.path() returns a &Path,
+                        // which is Debug.
+                        ds.field("repo", &format_args!("Some(Repository path: {:?})", repo_guard.path()));
+                    }
+                    Err(_) => {
+                        // The Mutex is poisoned. This means a thread panicked while holding the lock.
+                        // It's good practice for Debug not to panic itself.
+                        ds.field("repo", &"Some(Repository <Mutex poisoned>)");
+                    }
+                }
+            }
+            None => {
+                // The repo is not set.
+                ds.field("repo", &"None");
+            }
         }
+
+        // Handle the 'versions' field: Arc<RwLock<HashMap<VersionKey, FileVersion>>>
+        match self.versions.read() {
+            Ok(versions_guard) => {
+                // Successfully acquired a read lock.
+                // HashMap<VersionKey, FileVersion> implements Debug if VersionKey and FileVersion do.
+                // (VersionKey, FileVersion, CommitId, FilePath all derive Debug or are Debug).
+                ds.field("versions", &*versions_guard);
+            }
+            Err(_) => {
+                // The RwLock is poisoned.
+                ds.field("versions", &"<RwLock versions poisoned>");
+            }
+        }
+
+        // Handle the 'revs' field: Arc<RwLock<HashMap<FilePath, RevIndexPerPath>>>
+        match self.revs.read() {
+            Ok(revs_guard) => {
+                // Successfully acquired a read lock.
+                // HashMap<FilePath, RevIndexPerPath> implements Debug.
+                // (FilePath, RevIndexPerPath, RevSpec, CommitId all derive Debug or are Debug).
+                ds.field("revs", &*revs_guard);
+            }
+            Err(_) => {
+                // The RwLock is poisoned.
+                ds.field("revs", &"<RwLock revs poisoned>");
+            }
+        }
+
+        // Finalize the debug struct representation.
+        ds.finish()
     }
 }
