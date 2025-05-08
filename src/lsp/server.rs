@@ -76,7 +76,7 @@ impl Server {
         Self {
             config: Arc::new(Config::new("/non-existing-path".into())),
             client,
-            cache_state: cache::CacheStateShared::new().expect("Failed to create cache state"),
+            cache_state: cache::CacheStateShared::new(),
             root_path: PathBuf::new(),
             capabilities: NegotiatedCapabilities::default(),
         }
@@ -106,6 +106,14 @@ impl Server {
         tracing_to_json_pretty!(&server_caps, "Server Capabilities");
         tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
 
+        if let Err(err) = self.cache_state.set_repo(&self.root_path) {
+            tracing::error!("Failed to set cache_state repo for {}: {err}", self.root_path.display());
+            return ready(Err(ResponseError::new(
+                ErrorCode::REQUEST_FAILED,
+                format!("Failed to populate history: {err}"),
+            )));
+        }
+
         // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
         *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());
 
@@ -122,27 +130,27 @@ impl Server {
         // state",
         // ));
 
-        async move {
-            tracing::debug!("req::Initialize");
-            Ok(InitializeResult {
-                capabilities: server_caps,
-                server_info: Some(ServerInfo {
-                    name: LSP_SERVER_NAME.into(),
-                    version: Some(LSP_SERVER_VERSION.into()),
-                }),
-                // offset_encoding: Some("utf-8".to_string()),
-                offset_encoding: None,
-            })
-        }
-        // ready(Ok(InitializeResult {
-        //     capabilities: server_caps,
-        //     server_info: Some(ServerInfo {
-        //         name: LSP_SERVER_NAME.into(),
-        //         version: Some(LSP_SERVER_VERSION.into()),
-        //     }),
-        //     // offset_encoding: Some("utf-8".to_string()),
-        //     offset_encoding: None,
-        // }))
+        // async move {
+        //     tracing::debug!("req::Initialize");
+        //     Ok(InitializeResult {
+        //         capabilities: server_caps,
+        //         server_info: Some(ServerInfo {
+        //             name: LSP_SERVER_NAME.into(),
+        //             version: Some(LSP_SERVER_VERSION.into()),
+        //         }),
+        //         // offset_encoding: Some("utf-8".to_string()),
+        //         offset_encoding: None,
+        //     })
+        // }
+        ready(Ok(InitializeResult {
+            capabilities: server_caps,
+            server_info: Some(ServerInfo {
+                name: LSP_SERVER_NAME.into(),
+                version: Some(LSP_SERVER_VERSION.into()),
+            }),
+            // offset_encoding: Some("utf-8".to_string()),
+            offset_encoding: None,
+        }))
     }
 
     #[allow(clippy::unused_self)]
@@ -185,12 +193,7 @@ impl Server {
         );
 
         // Handle the Result returned by populate_history
-        if let Err(err) = self
-            .cache_state
-            .as_ref()
-            .unwrap()
-            .populate_history(&params.rev, relative_stripped_path)
-        {
+        if let Err(err) = self.cache_state.populate_history(&params.rev, relative_stripped_path) {
             tracing::error!("Failed to populate history: {err}");
             return ready(Err(ResponseError::new(
                 ErrorCode::REQUEST_FAILED,
@@ -207,12 +210,7 @@ impl Server {
         let rhs_path_buf = PathBuf::from(&relative_stripped_path);
 
         // Note: lookup_version now returns an owned FileVersion due to cloning
-        if let Some((commit_id, version)) = self
-            .cache_state
-            .as_ref()
-            .unwrap()
-            .lookup_version(relative_stripped_path, &params.rev)
-        {
+        if let Some((commit_id, version)) = self.cache_state.lookup_version(relative_stripped_path, &params.rev) {
             // Arc counts inside the cloned FileVersion will reflect sharing
             tracing::debug!(
                 "Arc Counts : content: {} - summary: {}",

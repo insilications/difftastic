@@ -266,13 +266,13 @@ pub struct CacheStateShared {
 }
 
 impl CacheStateShared {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
+    pub fn new() -> Self {
+        Self {
             repo: None, // Set to None initially.
             // Initialize empty HashMaps inside RwLock and Arc
             versions: Arc::new(RwLock::new(HashMap::new())),
             revs: Arc::new(RwLock::new(HashMap::new())),
-        })
+        }
     }
 
     pub fn set_repo(&mut self, repo_path: &Path) -> Result<()> {
@@ -290,7 +290,7 @@ impl CacheStateShared {
             commits_touching_path(&*repo_guard, rev, path)?
         }; // ← repo_guard lock released right here
         {
-            // Consider using .write().map_err(...) for better error handling.
+            // Maybe use .write().map_err(...) for better error handling.
             let mut versions_guard = self.versions.write().expect("Version store lock poisoned");
             let mut revs_guard = self.revs.write().expect("Rev store lock poisoned");
 
