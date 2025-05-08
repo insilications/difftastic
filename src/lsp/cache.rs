@@ -278,7 +278,6 @@ impl CacheStateShared {
     pub fn set_repo(&mut self, repo_path: &Path) -> Result<()> {
         let repo = Repository::open(repo_path)?;
         self.repo = Some(Arc::new(Mutex::new(repo)));
-        // *self.repo.lock().expect("Repo mutex poisoned") = Some(Arc::new(Mutex::new(repo)));
         Ok(())
     }
 

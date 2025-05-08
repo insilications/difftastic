@@ -1,18 +1,28 @@
 use std::{
+    backtrace::Backtrace,
+    borrow::BorrowMut,
+    cell::Cell,
+    fmt,
     future::{Future, ready},
     ops::ControlFlow,
+    panic,
+    panic::UnwindSafe,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Once},
 };
 
-use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, Result, router::Router};
+use anyhow::{Result, bail};
+use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, router::Router};
 use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
     InitializeResult, InitializedParams, Registration, RegistrationParams, ServerInfo, notification as notif,
     notification::Notification,
-    request::{self as req},
+    request::{
+        Request, {self as req},
+    },
 };
+use tokio::{task, task::JoinHandle};
 
 use crate::{
     diff_for_lsp,
@@ -32,6 +42,12 @@ struct UpdateConfigEvent(serde_json::Value);
 
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
 const LSP_SERVER_VERSION: &str = "0.1.0";
+
+#[derive(Debug)]
+pub struct StateSnapshot {
+    pub config: Arc<Config>,
+    pub root_path: PathBuf,
+}
 
 pub struct Server {
     // Immutable (mostly).
@@ -60,6 +76,7 @@ impl Server {
                 ControlFlow::Break(Ok(()))
             })
             //// Requests ////
+            // .request_snap::<lsp_ext::DidOpenTextDocumentCustom>(on_did_open_custom)
             .request::<lsp_ext::DidOpenTextDocumentCustom, _>(Self::on_did_open_custom)
             //// Notifications ////
             .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
@@ -382,4 +399,215 @@ impl Server {
         }
         tracing::info!("Registered DidChangeConfiguration");
     }
+
+    /// Create a blocking task with a database snapshot as the input.
+    // NB. `spawn_blocking` must be called immediately after snapshotting, so that the read guard
+    // held in `Analysis` is sent out of the async runtime worker. Otherwise, the read guard
+    // is held by the async runtime, and the next `apply_change` acquiring the write guard would
+    // deadlock.
+    fn spawn_with_snapshot<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(StateSnapshot) -> T + Send + 'static,
+    ) -> JoinHandle<T> {
+        let snap = StateSnapshot {
+            // analysis: self.host.snapshot(),
+            // vfs: Arc::clone(&self.vfs),
+            config: Arc::clone(&self.config),
+            // cache_state: cache::CacheStateShared,
+            // root_path: PathBuf::from(&self.root_path),
+            root_path: self.root_path.clone(),
+        };
+        task::spawn_blocking(move || f(snap))
+    }
 }
+
+trait RouterExt: BorrowMut<Router<Server>> {
+    fn request_snap<R: Request>(
+        &mut self,
+        f: impl Fn(StateSnapshot, R::Params) -> Result<R::Result> + Send + Copy + UnwindSafe + 'static,
+    ) -> &mut Self
+    where
+        R::Params: Send + UnwindSafe + 'static,
+        R::Result: Send + 'static,
+    {
+        self.borrow_mut().request::<R, _>(move |this, params| {
+            let task = this.spawn_with_snapshot(move |snap| with_catch_unwind(R::METHOD, move || f(snap, params)));
+            async move { task.await.expect("Already catch_unwind").map_err(error_to_response) }
+        });
+        self
+    }
+}
+
+impl RouterExt for Router<Server> {}
+
+fn with_catch_unwind<T>(ctx: &str, f: impl FnOnce() -> Result<T> + UnwindSafe) -> Result<T> {
+    static INSTALL_PANIC_HOOK: Once = Once::new();
+    thread_local! {
+        static PANIC_LOCATION: Cell<String> = const { Cell::new(String::new()) };
+    }
+
+    INSTALL_PANIC_HOOK.call_once(|| {
+        let old_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            let loc = info.location().map(|loc| loc.to_string()).unwrap_or_default();
+            let backtrace = Backtrace::force_capture();
+            PANIC_LOCATION.with(|inner| {
+                inner.set(format!("Location: {loc:#}\nBacktrace: {backtrace:#}"));
+            });
+            old_hook(info);
+        }));
+    });
+
+    match panic::catch_unwind(f) {
+        Ok(ret) => ret,
+        Err(payload) => {
+            let reason = payload
+                .downcast_ref::<String>()
+                .map(|s| &**s)
+                .or_else(|| payload.downcast_ref::<&str>().map(|s| &**s))
+                .unwrap_or("unknown");
+            let mut loc = PANIC_LOCATION.with(|inner| inner.take());
+            if loc.is_empty() {
+                loc = "Location: unknown".into();
+            }
+            tracing::error!("Panicked in {ctx}: {reason}\n{loc}");
+            bail!("Panicked in {ctx}: {reason}\n{loc}");
+        }
+    }
+}
+
+fn error_to_response(err: anyhow::Error) -> ResponseError {
+    if err.is::<Cancelled>() {
+        return ResponseError::new(ErrorCode::REQUEST_CANCELLED, "Client cancelled");
+    }
+    match err.downcast::<ResponseError>() {
+        Ok(resp) => resp,
+        Err(err) => ResponseError::new(ErrorCode::INTERNAL_ERROR, err),
+    }
+}
+
+#[derive(Debug)]
+pub enum Cancelled {
+    PendingWrite,
+    PropagatedPanic,
+}
+
+impl Cancelled {
+    pub(crate) fn throw(self) -> ! {
+        // We use resume and not panic here to avoid running the panic
+        // hook (that is, to avoid collecting and printing backtrace).
+        std::panic::resume_unwind(Box::new(self));
+    }
+
+    /// Runs `f`, and catches any salsa cancellation.
+    pub fn catch<F, T>(f: F) -> Result<T, Cancelled>
+    where
+        F: FnOnce() -> T + UnwindSafe,
+    {
+        match panic::catch_unwind(f) {
+            Ok(t) => Ok(t),
+            Err(payload) => match payload.downcast() {
+                Ok(cancelled) => Err(*cancelled),
+                Err(payload) => panic::resume_unwind(payload),
+            },
+        }
+    }
+}
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let why = match self {
+            Cancelled::PendingWrite => "pending write",
+            Cancelled::PropagatedPanic => "propagated panic",
+        };
+        f.write_str("cancelled because of ")?;
+        f.write_str(why)
+    }
+}
+
+impl std::error::Error for Cancelled {}
+
+// pub fn on_did_open_custom(
+//     snap: StateSnapshot,
+//     params: lsp_ext::DidOpenTextDocumentCustomParams,
+// ) -> Result<Option<lsp_ext::DiffRangesResponse>> {
+//     tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
+
+//     let relative_stripped_path = Path::new(&params.text_document.uri)
+//         .strip_prefix(&self.root_path)
+//         .map_err(|err| {
+//             tracing::error!("Failed to strip prefix: {err}");
+//             ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
+//                 ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
+//             ))
+//         })
+//         .unwrap();
+
+//     tracing::debug!(
+//         "params.rev: {} - relative_stripped_path: {}",
+//         &params.rev,
+//         relative_stripped_path.display()
+//     );
+
+//     // Handle the Result returned by populate_history
+//     if let Err(err) = self.cache_state.populate_history(&params.rev, relative_stripped_path) {
+//         tracing::error!("Failed to populate history: {err}");
+//         return ready(Err(ResponseError::new(
+//             ErrorCode::REQUEST_FAILED,
+//             format!("Failed to populate history: {err}"),
+//         )));
+//     }
+//     // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
+
+//     // self.cache_state
+//     //     .as_ref()
+//     //     .unwrap()
+//     //     .iterate_path_versions(&relative_stripped_path);
+
+//     let rhs_path_buf = PathBuf::from(&relative_stripped_path);
+
+//     // Note: lookup_version now returns an owned FileVersion due to cloning
+//     if let Some((commit_id, version)) = self.cache_state.lookup_version(relative_stripped_path, &params.rev) {
+//         // Arc counts inside the cloned FileVersion will reflect sharing
+//         tracing::debug!(
+//             "Arc Counts : content: {} - summary: {}",
+//             Arc::strong_count(&version.content), // Count on the cloned Arc
+//             Arc::strong_count(&version.summary)  // Count on the cloned Arc
+//         );
+//         tracing::debug!("Path           : {}", relative_stripped_path.display());
+//         tracing::debug!("Revspec        : {}", params.rev);
+//         tracing::debug!("Commit         : {}", commit_id.short());
+//         tracing::debug!("Summary        : {}", version.summary);
+//         tracing::debug!("Content Length : {}", version.content.len());
+
+//         match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
+//             Ok(diff_result) => {
+//                 if diff_result.has_reportable_change() {
+//                     ready(Ok(Some(lsp_ext::DiffRangesResponse {
+//                         ranges: diffresult_to_ranges(&diff_result),
+//                     })))
+//                     // match json3::print(&diff_result) {
+//                     //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
+//                     //     Err(err) => {
+//                     //         tracing::error!("Failed to serialize lsp_ext::DiffRangesResponse: {err}");
+//                     //         ready(Err(ResponseError::new(
+//                     //             ErrorCode::INTERNAL_ERROR,
+//                     //             format!("Failed to serialize lsp_ext::DiffRangesResponse: {err}"),
+//                     //         )))
+//                     //     }
+//                     // }
+//                 } else {
+//                     tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
+//                     ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
+//                 }
+//             }
+//             Err(err) => ready(Err(err)),
+//         }
+//     } else {
+//         tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
+//         ready(Err(ResponseError::new(
+//             ErrorCode::REQUEST_FAILED,
+//             format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
+//         )))
+//     }
+// }
