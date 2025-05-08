@@ -153,7 +153,7 @@ tracing-subscriber = { version = "0.3.19", features = [
 git2 = { version = "0.20.1", features = ["vendored-libgit2"] }
 phf = { version = "0.11.3", features = ["macros"] }
 macro_rules_attribute = "0.2.0"
-slab = "0.4.9"
+ropey = { git = "https://github.com/cessen/ropey.git", branch = "master" }
 
 [dev-dependencies]
 async-io = "2.4.0"

@@ -2,6 +2,7 @@ use std::{
     backtrace::Backtrace,
     borrow::BorrowMut,
     cell::Cell,
+    collections::HashMap,
     fmt,
     future::{Future, ready},
     ops::ControlFlow,
@@ -16,7 +17,7 @@ use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, router::
 use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
-    InitializeResult, InitializedParams, Registration, RegistrationParams, ServerInfo, notification as notif,
+    InitializeResult, InitializedParams, Registration, RegistrationParams, ServerInfo, Uri, notification as notif,
     notification::Notification,
     request::{
         Request, {self as req},
@@ -43,6 +44,11 @@ struct UpdateConfigEvent(serde_json::Value);
 const LSP_SERVER_NAME: &str = "difftastic-lsp";
 const LSP_SERVER_VERSION: &str = "0.1.0";
 
+#[derive(Debug, Default)]
+struct OpenedFilesData {
+    file_name: String,
+}
+
 #[derive(Debug)]
 pub struct StateSnapshot {
     pub config: Arc<Config>,
@@ -58,6 +64,7 @@ pub struct Server {
     cache_state: cache::CacheStateShared,
     root_path: PathBuf,
     capabilities: NegotiatedCapabilities,
+    opened_files: HashMap<PathBuf, OpenedFilesData>,
 }
 
 impl Server {
@@ -77,7 +84,7 @@ impl Server {
                 ControlFlow::Break(Ok(()))
             })
             //// Requests ////
-            .request_snap::<lsp_ext::DidOpenTextDocumentCustom>(on_did_open_custom)
+            // .request_snap::<lsp_ext::DidOpenTextDocumentCustom>(on_did_open_custom)
             // .request::<lsp_ext::DidOpenTextDocumentCustom, _>(Self::on_did_open_custom)
             //// Notifications ////
             .notification::<notif::DidOpenTextDocument>(Self::on_did_open)
@@ -97,6 +104,7 @@ impl Server {
             cache_state: cache::CacheStateShared::new(),
             root_path: PathBuf::new(),
             capabilities: NegotiatedCapabilities::default(),
+            opened_files: HashMap::new(),
         }
     }
 
@@ -282,6 +290,10 @@ impl Server {
             params.text_document.language_id,
             params.text_document.version
         );
+        // let kk = params.text_document.uri.to_file_path().unwrap_or_default();
+        let file_path = params.text_document.uri.to_file_path().unwrap_or_default();
+        self.opened_files
+            .insert(file_path.into_owned(), OpenedFilesData::default());
 
         ControlFlow::Continue(())
     }

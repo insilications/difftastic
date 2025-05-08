@@ -6,6 +6,7 @@ mod lsp_ext;
 mod meter;
 mod server;
 mod uri_ext;
+mod vfs;
 
 #[macro_export]
 macro_rules! tracing_to_json {
