@@ -34,6 +34,7 @@ use crate::{
         config::{Config, WORKSPACE_CONFIG_KEY},
         lsp_ext,
         uri_ext::UriExt,
+        vfs,
     },
     tracing_to_json, tracing_to_json_pretty,
 };
@@ -65,6 +66,7 @@ pub struct Server {
     root_path: PathBuf,
     capabilities: NegotiatedCapabilities,
     opened_files: HashMap<PathBuf, OpenedFilesData>,
+    vfs: vfs::Vfs,
 }
 
 impl Server {
@@ -290,11 +292,17 @@ impl Server {
             params.text_document.language_id,
             params.text_document.version
         );
-        // let kk = params.text_document.uri.to_file_path().unwrap_or_default();
-        let file_path = params.text_document.uri.to_file_path().unwrap_or_default();
+
+        // let file_path = params.text_document.uri.to_file_path().unwrap_or_default();
+
         self.opened_files
             .insert(file_path.into_owned(), OpenedFilesData::default());
 
+        self.vfs.open(
+            params.text_document.uri.clone(),
+            params.text_document.version,
+            &params.text_document.text,
+        );
         ControlFlow::Continue(())
     }
 
