@@ -18,7 +18,8 @@ use gxhash::gxhash64;
 use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
-    InitializeResult, InitializedParams, Registration, RegistrationParams, ServerInfo, Uri, notification as notif,
+    InitializeResult, InitializedParams, LogMessageParams, MessageType, Registration, RegistrationParams, ServerInfo,
+    Uri, notification as notif,
     notification::Notification,
     request::{
         Request, {self as req},
@@ -30,7 +31,7 @@ use crate::{
     diff_for_lsp,
     display::json3::diffresult_to_ranges,
     lsp::{
-        cache,
+        cache_git,
         capabilities::{NegotiatedCapabilities, negotiate_capabilities},
         config::{Config, WORKSPACE_CONFIG_KEY},
         lsp_ext,
@@ -55,7 +56,7 @@ struct OpenedFilesData {
 #[derive(Debug)]
 pub struct StateSnapshot {
     pub config: Arc<Config>,
-    pub cache_state: cache::CacheStateShared,
+    pub cache_state: cache_git::CacheStateShared,
     pub root_path: PathBuf,
 }
 
@@ -64,7 +65,7 @@ pub struct Server {
     client: ClientSocket,
     // States.
     config: Arc<Config>,
-    cache_state: cache::CacheStateShared,
+    cache_state: cache_git::CacheStateShared,
     root_path: PathBuf,
     capabilities: NegotiatedCapabilities,
     opened_files: HashMap<PathBuf, OpenedFilesData>,
@@ -105,7 +106,7 @@ impl Server {
         Self {
             config: Arc::new(Config::new("/non-existing-path".into())),
             client,
-            cache_state: cache::CacheStateShared::new(),
+            cache_state: cache_git::CacheStateShared::new(),
             root_path: PathBuf::new(),
             capabilities: NegotiatedCapabilities::default(),
             opened_files: HashMap::new(),
@@ -187,6 +188,12 @@ impl Server {
     #[allow(clippy::unused_self)]
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
         tracing::debug!("notif::Initialized");
+        self.client
+            .log_message(LogMessageParams {
+                typ: MessageType::INFO,
+                message: "1 notif::Initialized".into(),
+            })
+            .unwrap();
 
         if self.capabilities.workspace_configuration {
             tokio::spawn({

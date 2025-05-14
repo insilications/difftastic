@@ -53,7 +53,6 @@ use display::style::print_warning;
 use log::info;
 use mimalloc::MiMalloc;
 use options::{FilePermissions, USAGE};
-use tracing::Level;
 
 use crate::{
     conflicts::{START_LHS_MARKER, apply_conflict_markers},
@@ -124,7 +123,6 @@ const DEFAULT_DIFF_OPTIONS_LSP: DiffOptions = DiffOptions {
 };
 
 const BACKTRACE_ENV: &str = "RUST_BACKTRACE";
-const CHRONO_LOCAL: &str = "%FT%T";
 
 /// Terminate the process if we get SIGPIPE.
 #[cfg(unix)]
@@ -149,15 +147,6 @@ fn main() {
     reset_sigpipe();
 
     if options::parse_lsp_opt() {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::DEBUG)
-            .with_ansi(false)
-            .with_writer(std::io::stderr)
-            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
-            .compact()
-            .init();
-
-        // lsp::start_lsp().await;
         let ret = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -166,7 +155,7 @@ fn main() {
         match ret {
             Ok(()) => {}
             Err(err) => {
-                tracing::error!("Unexpected error: {err:#}");
+                eprintln!("Unexpected error: {err:#}");
                 process::exit(101);
             }
         }

@@ -46,7 +46,7 @@ clap = { version = "4.5.37", features = [
         "string",
 ] }
 typed-arena = "2.0.2"
-rustc-hash = "2.0.0"
+rustc-hash = "2.1.1"
 strsim = "0.10.0"
 lazy_static = "1.4.0"
 libc = "0.2.108"
@@ -65,19 +65,19 @@ ignore = ">= 0.4, < 0.4.24"
 owo-colors = "3.5.0"
 wu-diff = "0.1.2"
 rayon = "1.7.0"
-tree_magic_mini = "3.1.5"
+tree_magic_mini = "3.1.6"
 
-bumpalo = "3.16.0"
+bumpalo = "3.17.0"
 unicode-width = "0.1.9"
-crossterm = { version = "0.28.0", features = ["windows"] }
-glob = "0.3.1"
+crossterm = { version = "0.29.0", features = ["windows"] }
+glob = "0.3.2"
 strum = { version = "0.26", features = ["derive"] }
 hashbrown = "0.14.0"
 humansize = "2.1.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 line-numbers = "0.3.0"
-smallvec = "1.13.2"
+smallvec = "1.15.0"
 streaming-iterator = "0.1.9"
 encoding_rs = "0.8.35"
 
@@ -118,6 +118,8 @@ tree-sitter-typescript = "0.23.2"
 tree-sitter-xml = "0.7.0"
 tree-sitter-yaml = "0.7.0"
 tokio = { version = "1.44.2", features = [
+        "full",
+        "tracing",
         "io-std",
         "io-util",
         "macros",
@@ -149,6 +151,7 @@ tracing-subscriber = { version = "0.3.19", features = [
         "fmt",
         "chrono",
         "local-time",
+        "smallvec",
 ] }
 git2 = { version = "0.20.1", features = ["vendored-libgit2"] }
 phf = { version = "0.11.3", features = ["macros"] }
@@ -162,6 +165,8 @@ async-io = "2.4.0"
 async-process = "2.3.0"
 criterion = { version = "0.5.1", features = ["async_tokio"] }
 tokio = { version = "1.44.2", features = [
+        "full",
+        "tracing",
         "io-std",
         "io-util",
         "macros",
@@ -171,11 +176,6 @@ tokio = { version = "1.44.2", features = [
 ] }
 tokio-util = { version = "0.7.15", features = ["compat"] }
 tower = "0.5.2"
-tracing-subscriber = { version = "0.3.19", features = [
-        "fmt",
-        "chrono",
-        "local-time",
-] }
 # assert_cmd 2.0.10 requires predicates 3.
 # TODO: update.
 assert_cmd = ">= 2, < 2.0.9"

@@ -1,9 +1,14 @@
 use anyhow::{Context, Result};
 use async_lsp::{
-    client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer, panic::CatchUnwindLayer,
-    server::LifecycleLayer, tracing::TracingLayer,
+    client_monitor::ClientProcessMonitorLayer,
+    concurrency::ConcurrencyLayer,
+    panic::CatchUnwindLayer,
+    server::LifecycleLayer,
+    stdio::{PipeStdin, PipeStdout},
+    tracing::TracingLayer,
 };
 use tower::ServiceBuilder;
+use tracing::Level;
 
 use crate::lsp::server::Server;
 
@@ -43,7 +48,17 @@ use crate::lsp::server::Server;
 //     }
 // }
 
+const CHRONO_LOCAL: &str = "%FT%T";
+
 pub async fn run_server_stdio() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
+        .with_ansi(false)
+        .with_writer(std::io::stderr)
+        .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
+        .compact()
+        .init();
+
     let concurrency = match std::thread::available_parallelism() {
         // Double the concurrency limit since many handlers are blocking anyway.
         Ok(n) => n.saturating_mul(2.try_into().expect("2 is not 0")),
@@ -54,12 +69,12 @@ pub async fn run_server_stdio() -> Result<()> {
     };
     tracing::info!("Max concurrent requests: {concurrency}");
 
+    // let (stdin2, stdout2) = (tokio::io::stdin(), tokio::io::stdout());
+
     // Prefer truly asynchronous piped stdin/stdout without blocking tasks.
     #[cfg(unix)]
-    let (stdin, stdout) = (
-        async_lsp::stdio::PipeStdin::lock_tokio().context("stdin is not pipe-like")?,
-        async_lsp::stdio::PipeStdout::lock_tokio().context("stdout is not pipe-like")?,
-    );
+    let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
+    let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
 
     // Fallback to spawn blocking read/write otherwise.
     #[cfg(not(unix))]
