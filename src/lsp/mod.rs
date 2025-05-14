@@ -2,6 +2,7 @@ mod cache_git;
 mod capabilities;
 mod config;
 pub mod custom;
+mod logging;
 mod lsp_ext;
 mod meter;
 mod server;

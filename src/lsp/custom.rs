@@ -8,9 +8,8 @@ use async_lsp::{
     tracing::TracingLayer,
 };
 use tower::ServiceBuilder;
-use tracing::Level;
 
-use crate::lsp::server::Server;
+use crate::lsp::{logging, server::Server};
 
 //  The file length limit. Files larger than this will be rejected from all interactions.
 //  The hard limit is `u32::MAX` due to following conditions.
@@ -48,16 +47,16 @@ use crate::lsp::server::Server;
 //     }
 // }
 
-const CHRONO_LOCAL: &str = "%FT%T";
+// const CHRONO_LOCAL: &str = "%FT%T";
 
 pub async fn run_server_stdio() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_max_level(Level::DEBUG)
-        .with_ansi(false)
-        .with_writer(std::io::stderr)
-        .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
-        .compact()
-        .init();
+    // tracing_subscriber::fmt()
+    //     .with_max_level(Level::DEBUG)
+    //     .with_ansi(false)
+    //     .with_writer(std::io::stderr)
+    //     .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
+    //     .compact()
+    //     .init();
 
     let concurrency = match std::thread::available_parallelism() {
         // Double the concurrency limit since many handlers are blocking anyway.
@@ -83,7 +82,7 @@ pub async fn run_server_stdio() -> Result<()> {
         tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(tokio::io::stdout()),
     );
 
-    let (mainloop, _) = async_lsp::MainLoop::new_server(|client| {
+    let (server_main_loop, client) = async_lsp::MainLoop::new_server(|client| {
         ServiceBuilder::new()
             .layer(TracingLayer::default())
             // .layer(MeterLayer)
@@ -94,5 +93,7 @@ pub async fn run_server_stdio() -> Result<()> {
             .service(Server::new_router(client))
     });
 
-    Ok(mainloop.run_buffered(stdin, stdout).await?)
+    logging::setup_default_subscriber(client);
+
+    Ok(server_main_loop.run_buffered(stdin, stdout).await?)
 }
