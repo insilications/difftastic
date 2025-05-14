@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLock},
 };
@@ -85,41 +86,109 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
 // ────────────────────────────────────────────────────────────────────────────────
 //  1. Domain types
 // ────────────────────────────────────────────────────────────────────────────────
-//
 
-/// A *strongly-typed* git commit object id (20 raw bytes).
+/// A strongly-typed git commit object id (20 raw bytes).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CommitId([u8; 20]);
 
 impl CommitId {
-    /// Create a `CommitId` from the usual 40-character hexadecimal SHA-1 string.
+    /// Textual (hex) length of a SHA-1 hash.
+    const HEX_LEN: usize = Self::RAW_LEN * 2;
+    /// Raw byte length of a SHA-1 hash.
+    const RAW_LEN: usize = 20;
+
+    // 40
+
+    /// Create a `CommitId` from its 40-character hexadecimal representation.
     ///
-    /// NOTE: This function does *no* full error recovery – it just bubbles
-    ///       back a `String` with the problem description because the purpose
-    ///       here is to keep the example dependency-free.
+    /// Returns `Err(String)` that explains *why* the string is rejected:
+    ///   • wrong length,
+    ///   • non-ASCII byte,
+    ///   • or the exact position of a non-hex digit.
     pub fn from_hex(hex: &str) -> Result<Self, String> {
-        if hex.len() != 40 {
-            return Err(format!("expected 40 hex chars, got {}", hex.len()));
+        if hex.len() != Self::HEX_LEN {
+            return Err(format!(
+                "expected {} hexadecimal characters, got {}",
+                Self::HEX_LEN,
+                hex.len()
+            ));
+        }
+        if !hex.is_ascii() {
+            return Err("input contains non-ASCII characters".into());
         }
 
-        let mut bytes = [0u8; 20];
+        let mut bytes = [0u8; Self::RAW_LEN];
+
         for (i, chunk) in hex.as_bytes().chunks_exact(2).enumerate() {
-            let h = char::from(chunk[0]).to_digit(16).ok_or("invalid hex")?;
-            let l = char::from(chunk[1]).to_digit(16).ok_or("invalid hex")?;
-            bytes[i] = ((h << 4) + l) as u8;
+            let hi_char = chunk[0] as char;
+            let lo_char = chunk[1] as char;
+            let hi = hi_char
+                .to_digit(16)
+                .ok_or_else(|| format!("invalid hex digit '{}' at byte index {}", hi_char, i * 2))?;
+            let lo = lo_char
+                .to_digit(16)
+                .ok_or_else(|| format!("invalid hex digit '{}' at byte index {}", lo_char, i * 2 + 1))?;
+            bytes[i] = ((hi << 4) | lo) as u8;
         }
+
         Ok(Self(bytes))
     }
 
-    /// A traditional “short” (7-char) textual representation – handy for logs.
+    /// Traditional 7-character short form (useful for logs).
     #[allow(dead_code)]
     pub fn short(&self) -> String {
-        self.0
-            .iter()
-            .take(4) // 4 × 2 hex digits = 8 chars – slice after join.
-            .flat_map(|b| format!("{b:02x}").chars().collect::<Vec<_>>())
-            .take(7)
-            .collect()
+        let mut s = String::with_capacity(Self::HEX_LEN);
+        use std::fmt::Write;
+        for b in &self.0 {
+            write!(s, "{:02x}", b).unwrap();
+        }
+        s.truncate(7);
+        s
+    }
+
+    /// Full 40-character hexadecimal representation.
+    #[allow(dead_code)]
+    pub fn long(&self) -> String {
+        let mut s = String::with_capacity(Self::HEX_LEN);
+        use std::fmt::Write;
+        for b in &self.0 {
+            write!(s, "{:02x}", b).unwrap();
+        }
+        s
+    }
+}
+
+impl fmt::Display for CommitId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.long())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Optional quick-check
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip() {
+        let hex = "d3adb33fd3adb33fd3adb33fd3adb33fd3adb33f";
+        let cid = CommitId::from_hex(hex).unwrap();
+        assert_eq!(cid.long(), hex);
+        assert_eq!(cid.to_string(), hex);
+        assert_eq!(cid.short(), &hex[..7]);
+    }
+
+    #[test]
+    fn error_on_bad_len() {
+        assert!(CommitId::from_hex("abcd").is_err());
+    }
+
+    #[test]
+    fn error_on_non_hex() {
+        let err = CommitId::from_hex("zz00000000000000000000000000000000000000").unwrap_err();
+        assert!(err.contains("invalid hex digit"));
     }
 }
 

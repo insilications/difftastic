@@ -15,8 +15,8 @@ use std::{
 use anyhow::{Context, Result, bail};
 use lsp_types::{Position, TextDocumentContentChangeEvent, Uri};
 use ropey::Rope;
-use unicode_segmentation::UnicodeSegmentation;
 
+// use unicode_segmentation::UnicodeSegmentation;
 use crate::lsp::uri_ext::UriExt;
 
 /// A single text document tracked by the server.
