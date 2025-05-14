@@ -79,11 +79,24 @@ pub(crate) struct ClientSocketWriter {
 
 impl std::io::Write for ClientSocketWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let message = String::from_utf8_lossy(buf).to_string();
-        let params = LogMessageParams { typ: self.typ, message };
+        let mut message = String::from_utf8_lossy(buf).to_string();
+        if message.ends_with('\n') {
+            message.pop();
+            if message.ends_with('\r') {
+                message.pop();
+            }
+        }
+        // let message: &mut String = &mut String::from_utf8_lossy(buf).to_string();
+        // if message.ends_with('\n') {
+        //     message.pop();
+        //     if message.ends_with('\r') {
+        //         message.pop();
+        //     }
+        // }
+        // let params = LogMessageParams { typ: self.typ, message };
 
         let mut client_socket = self.client_socket.as_ref();
-        _ = client_socket.log_message(params);
+        _ = client_socket.log_message(LogMessageParams { typ: self.typ, message });
         Ok(buf.len())
     }
 
