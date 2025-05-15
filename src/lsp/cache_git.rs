@@ -1,12 +1,14 @@
 use std::{
     collections::HashMap,
     fmt,
+    fmt::Write,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLock},
 };
 
 use anyhow::{Context, Result};
 use git2::{DiffOptions, ObjectType, Oid, Repository, Sort};
+use gxhash::gxhash64;
 
 /// Return all commits at/behind `rev` that modified `path`, newest first.
 /// Each entry is (summary, oid, *optional* `file_content`).
@@ -138,9 +140,9 @@ impl CommitId {
     #[allow(dead_code)]
     pub fn short(&self) -> String {
         let mut s = String::with_capacity(Self::HEX_LEN);
-        use std::fmt::Write;
+
         for b in &self.0 {
-            write!(s, "{:02x}", b).unwrap();
+            write!(s, "{b:02x}").unwrap();
         }
         s.truncate(7);
         s
@@ -150,9 +152,9 @@ impl CommitId {
     #[allow(dead_code)]
     pub fn long(&self) -> String {
         let mut s = String::with_capacity(Self::HEX_LEN);
-        use std::fmt::Write;
+
         for b in &self.0 {
-            write!(s, "{:02x}", b).unwrap();
+            write!(s, "{b:02x}").unwrap();
         }
         s
     }

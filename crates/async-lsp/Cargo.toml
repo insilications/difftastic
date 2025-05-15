@@ -1,125 +1,83 @@
 [package]
-name = "async-lsp"
-version = "0.2.2"
-edition = "2021"
-description = "Asynchronous Language Server Protocol (LSP) framework based on tower"
-keywords = ["lsp", "language-server", "tower"]
-categories = ["asynchronous"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/oxalica/async-lsp"
-# Required features:
-# - std::future::poll_fn
-# - std::task::ready!
-rust-version = "1.64" # Sync with CI!
-include = [
-    "/Cargo.toml",
-    "/LICENSE-APACHE",
-    "/LICENSE-MIT",
-    "/README.md",
-    "/benches",
-    "/examples",
-    "/src",
-    "/tests",
-]
+categories   = ["asynchronous"]
+description  = "Asynchronous Language Server Protocol (LSP) framework based on tower"
+edition      = "2021"
+include      = ["/Cargo.toml", "/LICENSE-APACHE", "/LICENSE-MIT", "/README.md", "/benches", "/examples", "/src", "/tests"]
+keywords     = ["language-server", "lsp", "tower"]
+license      = "MIT OR Apache-2.0"
+name         = "async-lsp"
+repository   = "https://github.com/oxalica/async-lsp"
+rust-version = "1.88.0"
+version      = "0.2.2"
 
 [features]
-default = ["client-monitor", "omni-trait", "stdio", "tracing"]
-client-monitor = ["dep:waitpid-any", "dep:rustix"]
-omni-trait = []
-stdio = ["dep:rustix", "rustix?/fs", "tokio?/net"]
-tracing = ["dep:tracing"]
-forward = []
+client-monitor = ["dep:rustix", "dep:waitpid-any"]
+default        = ["client-monitor", "omni-trait", "stdio", "tracing"]
+forward        = []
+omni-trait     = []
+stdio          = ["dep:rustix", "rustix?/fs", "tokio?/net"]
+tracing        = ["dep:tracing"]
 
 [[example]]
-name = "client_builder"
-required-features = ["omni-trait", "tracing", "tokio"]
+name              = "client_builder"
+required-features = ["omni-trait", "tokio", "tracing"]
 
 [[example]]
-name = "client_trait"
-required-features = ["omni-trait", "tracing", "tokio"]
+name              = "client_trait"
+required-features = ["omni-trait", "tokio", "tracing"]
 
 [[example]]
-name = "server_builder"
-required-features = [
-    "client-monitor",
-    "omni-trait",
-    "stdio",
-    "tracing",
-    "tokio",
-]
+name              = "server_builder"
+required-features = ["client-monitor", "omni-trait", "stdio", "tokio", "tracing"]
 
 [[example]]
-name = "server_trait"
-required-features = [
-    "client-monitor",
-    "omni-trait",
-    "stdio",
-    "tracing",
-    "tokio",
-]
+name              = "server_trait"
+required-features = ["client-monitor", "omni-trait", "stdio", "tokio", "tracing"]
 
 [[example]]
-name = "inspector"
-required-features = ["forward", "tracing", "tokio"]
+name              = "inspector"
+required-features = ["forward", "tokio", "tracing"]
 
 [[test]]
-name = "unit_test"
+name              = "unit_test"
 required-features = ["omni-trait", "tokio"]
 
 [[test]]
-name = "stdio"
-harness = false
+harness           = false
+name              = "stdio"
 required-features = ["stdio", "tokio"]
 
 [[bench]]
-name = "bench"
 harness = false
+name    = "bench"
 
 [dependencies]
-async-io = { workspace = true, optional = true }
-futures.workspace = true
-lsp-types.workspace = true
-pin-project-lite = "0.2.16"
-rustix = { workspace = true, optional = true }
-serde.workspace = true
-serde_json.workspace = true
-thiserror = "2"
-tokio.workspace = true
-tower-layer.workspace = true
-tower-service.workspace = true
-tracing = { version = "0.1.41", optional = true }
-waitpid-any = { workspace = true, optional = true }
-tracing-subscriber .workspace = true
+async-io                     = { workspace = true, optional = true }
+futures.workspace            = true
+lsp-types.workspace          = true
+pin-project-lite             = "0.2.16"
+rustix                       = { workspace = true, optional = true }
+serde.workspace              = true
+serde_json.workspace         = true
+thiserror                    = "2"
+tokio                        = { workspace = true, optional = true }
+tower-layer.workspace        = true
+tower-service.workspace      = true
+tracing                      = { workspace = true, optional = true }
+tracing-subscriber.workspace = true
+waitpid-any                  = { workspace = true, optional = true }
 
 
 [dev-dependencies]
-async-io = { version = "2.4.0" }
+async-io      = { version = "2.4.0" }
 async-process = "2.3.0"
 # Workaround: https://github.com/bheisler/criterion.rs/issues/702
-clap = { version = "4.5.37", features = [
-    "cargo",
-    "env",
-    "wrap_help",
-    "string",
-] }
-criterion = { version = "0.5.1", features = ["async_tokio"] }
-tokio = { version = "1.44.2", features = [
-    "full",
-    "tracing",
-    "io-std",
-    "io-util",
-    "macros",
-    "process",
-    "rt",
-    "time",
-] }
-tokio-util = { version = "0.7.15", features = ["compat"] }
-tower = "0.5.2"
-tracing-subscriber = { version = "0.3.19", features = [
-    "fmt",
-    "chrono",
-    "local-time",
-] }
+clap               = { version = "4.5.37", features = ["cargo", "env", "string", "wrap_help"] }
+criterion          = { version = "0.5.1", features = ["async_tokio"] }
+tokio              = { version = "1.45.0", features = ["full", "io-std", "io-util", "macros", "process", "rt", "time", "tracing"] }
+tokio-util         = { version = "0.7.15", features = ["compat"] }
+tower              = "0.5.2"
+tracing-subscriber = { version = "0.3.19", features = ["chrono", "fmt", "local-time"] }
 
 [profile.bench]
 debug = 1
@@ -127,3 +85,6 @@ debug = 1
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
