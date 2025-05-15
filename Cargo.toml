@@ -106,6 +106,7 @@ async-lsp = { version = "0.2.2", features = [
         "omni-trait",
         "tokio",
         "tracing",
+        "async-io"
 ], path = "crates/async-lsp/" }
 
 [workspace]
@@ -201,10 +202,11 @@ tokio = { version = "1.44.2", features = [
         "io-util",
         "macros",
         "process",
+        "net",
         "rt",
         "time",
 ] }
-futures = { version = "0.3.31", default-features = false, features = [
+  utures = { version = "0.3.31", default-features = false, features = [
         "async-await",
         "std",
 ] }

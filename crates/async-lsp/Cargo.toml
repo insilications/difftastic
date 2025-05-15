@@ -76,29 +76,21 @@ name = "bench"
 harness = false
 
 [dependencies]
-async-io = { version = "2.4.0", optional = true }
-futures = { version = "0.3.31", default-features = false, features = [
-    "async-await",
-    "std",
-] }
-lsp-types = { version = "0.97.0", features = ["proposed"] }
-# See: https://github.com/gluon-lang/lsp-types/issues/284
+async-io = { workspace = true, optional = true }
+futures.workspace = true
+lsp-types.workspace = true
 pin-project-lite = "0.2.16"
-rustix = { version = "1.0.7", optional = true }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.95"
+rustix = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
 thiserror = "2"
-tokio = { version = "1.44.2", optional = true }
-tower-layer = "0.3.3"
-tower-service = "0.3.3"
+tokio.workspace = true
+tower-layer.workspace = true
+tower-service.workspace = true
 tracing = { version = "0.1.41", optional = true }
-waitpid-any = { version = "0.3", optional = true }
-tracing-subscriber = { version = "0.3.19", features = [
-    "fmt",
-    "chrono",
-    "local-time",
-    "smallvec",
-] }
+waitpid-any = { workspace = true, optional = true }
+tracing-subscriber .workspace = true
+
 
 [dev-dependencies]
 async-io = { version = "2.4.0" }
