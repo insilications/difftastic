@@ -199,11 +199,7 @@ path = "src/main.rs"
 
 [features]
 
-[lints.clippy]
-pedantic = "warn"
-cargo = "warn"
-nursery = "warn"
-too_many_lines = { level = "allow", priority = 1 }
+
 
 [profile.dev]
 opt-level = 0 # controls the `--opt-level` the compiler builds with.
@@ -227,3 +223,28 @@ panic = 'unwind'       # panic strategy (`-C panic=...`), can also be 'abort'
 incremental = false    # whether or not incremental compilation is enabled
 overflow-checks = true # use overflow checks for integer arithmetic.
 # Passes the `-C overflow-checks=...` flag to the compiler.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/async-lsp"
+]
+
+[workspace.dependencies]
+
+
+
+
+
+
+
+
+
+
+
+
+[workspace.lints.clippy]
+pedantic = "warn"
+cargo = "warn"
+nursery = "warn"
+too_many_lines = { level = "allow", priority = 1 }
