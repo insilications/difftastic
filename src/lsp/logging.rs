@@ -1,11 +1,11 @@
-use std::{backtrace::Backtrace, sync::Arc};
+use std::sync::Arc;
 
 use async_lsp::{
     ClientSocket, LanguageClient,
     lsp_types::{LogMessageParams, MessageType},
 };
-use tracing::{Level, Metadata, subscriber::set_default};
-use tracing_subscriber::{fmt::MakeWriter, layer::SubscriberExt};
+use tracing::{Level, Metadata};
+use tracing_subscriber::fmt::MakeWriter;
 
 const CHRONO_LOCAL: &str = "%FT%T";
 
@@ -19,17 +19,6 @@ pub fn setup_default_subscriber(client: ClientSocket) {
         .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
         .compact()
         .init();
-    // let subscriber = tracing_subscriber::registry()
-    //     .with(tracing_subscriber::filter::LevelFilter::INFO)
-    //     .with(
-    //         HierarchicalLayer::new(2)
-    //             .with_thread_ids(true)
-    //             .with_thread_names(true)
-    //             .with_indent_lines(true)
-    //             .with_bracketed_fields(true)
-    //             .with_ansi(false)
-    //             .with_writer(client_socket_writer),
-    //     );
 }
 
 // pub(crate) fn setup_panic_hook() {
@@ -60,8 +49,8 @@ pub fn setup_default_subscriber(client: ClientSocket) {
 //     }));
 // }
 
-pub(crate) struct ClientSocketWriterMaker {
-    pub(crate) client_socket: Arc<ClientSocket>,
+pub struct ClientSocketWriterMaker {
+    pub client_socket: Arc<ClientSocket>,
 }
 
 impl ClientSocketWriterMaker {
@@ -72,31 +61,29 @@ impl ClientSocketWriterMaker {
     }
 }
 
-pub(crate) struct ClientSocketWriter {
+pub struct ClientSocketWriter {
     client_socket: Arc<ClientSocket>,
     typ: MessageType,
 }
 
 impl std::io::Write for ClientSocketWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut message = String::from_utf8_lossy(buf).to_string();
-        if message.ends_with('\n') {
-            message.pop();
-            if message.ends_with('\r') {
-                message.pop();
+        // Compute how many bytes to *actually* emit:
+        // drop a trailing `\n`, and if that leaves a trailing `\r`, drop that too.
+        let mut emit = buf.len();
+        if emit > 0 && buf[emit - 1] == b'\n' {
+            emit -= 1;
+            if emit > 0 && buf[emit - 1] == b'\r' {
+                emit -= 1;
             }
         }
-        // let message: &mut String = &mut String::from_utf8_lossy(buf).to_string();
-        // if message.ends_with('\n') {
-        //     message.pop();
-        //     if message.ends_with('\r') {
-        //         message.pop();
-        //     }
-        // }
-        // let params = LogMessageParams { typ: self.typ, message };
 
-        let mut client_socket = self.client_socket.as_ref();
-        _ = client_socket.log_message(LogMessageParams { typ: self.typ, message });
+        if emit > 0 {
+            let message = String::from_utf8_lossy(&buf[..emit]).to_string();
+            let mut client_socket = self.client_socket.as_ref();
+            _ = client_socket.log_message(LogMessageParams { typ: self.typ, message });
+        }
+
         Ok(buf.len())
     }
 
@@ -120,8 +107,7 @@ impl<'a> MakeWriter<'a> for ClientSocketWriterMaker {
             Level::ERROR => MessageType::ERROR,
             Level::WARN => MessageType::WARNING,
             Level::INFO => MessageType::INFO,
-            Level::DEBUG => MessageType::LOG,
-            Level::TRACE => MessageType::LOG,
+            Level::DEBUG | Level::TRACE => MessageType::LOG,
         };
 
         ClientSocketWriter {
