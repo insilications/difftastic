@@ -4,10 +4,80 @@ use async_lsp::{
     ClientSocket, LanguageClient,
     lsp_types::{LogMessageParams, MessageType},
 };
-use tracing::{Level, Metadata};
-use tracing_subscriber::fmt::MakeWriter;
+use tracing::Metadata;
+use tracing_core::{Event, Level, Subscriber};
+use tracing_subscriber::fmt::format::Writer as FmtWrite; // To avoid conflict with std::io::Write
+use tracing_subscriber::{
+    fmt::{
+        FmtContext, FormatEvent, FormatFields, MakeWriter,
+        time::{ChronoLocal, FormatTime},
+    },
+    registry::LookupSpan,
+};
 
-const CHRONO_LOCAL: &str = "%FT%T";
+use crate::lsp::CHRONO_LOCAL;
+
+#[derive(Debug, Clone)]
+pub struct CustomEventFormatter {
+    timer: ChronoLocal,
+}
+
+impl CustomEventFormatter {
+    pub fn new() -> Self {
+        Self {
+            timer: ChronoLocal::new(CHRONO_LOCAL.into()),
+        }
+    }
+}
+
+impl<S, N> FormatEvent<S, N> for CustomEventFormatter
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static, // N will be the field formatter from the subscriber builder
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>, // Context providing span info and field formatter
+        mut writer: FmtWrite<'_>,   // Special writer from tracing_subscriber
+        event: &Event<'_>,          // The event to format
+    ) -> std::fmt::Result {
+        // 1. Write time (e.g., 025-05-20 02:00:25)
+        if self.timer.format_time(&mut writer).is_err() {
+            writer.write_str("<unknown time>")?;
+        }
+        // 2. Write space
+        writer.write_char(' ')?;
+
+        let meta = event.metadata();
+        // 3. Write level and target with a final `::` (e.g., INFO my_crate::my_module::)
+        write!(writer, " {} {}::", meta.level().as_str(), meta.target())?;
+
+        // 4. Write Span Context (e.g., parent_span:current_span)
+        if let Some(scope) = ctx.event_scope() {
+            // Iterate from the outermost span to the current one
+            let mut first = true;
+            for span_ref in scope.from_root() {
+                if first {
+                    first = false;
+                } else {
+                    // Separator between span names
+                    writer.write_char(':')?;
+                }
+                write!(writer, "{}", span_ref.name())?;
+            }
+        }
+
+        // 5. Ensure a ` - ` before the message content
+        writer.write_str(" - ")?;
+
+        // 6. Write the event's message and other fields
+        // This uses the default field formatter (N) configured on the subscriber,
+        ctx.format_fields(writer.by_ref(), event)?;
+
+        // Add a newline at the end of the log entry
+        writeln!(writer)
+    }
+}
 
 pub fn setup_default_subscriber(client: ClientSocket) {
     let client_socket_writer = ClientSocketWriterMaker::new(client);
@@ -81,7 +151,10 @@ impl std::io::Write for ClientSocketWriter {
         if emit > 0 {
             let message = String::from_utf8_lossy(&buf[..emit]).to_string();
             let mut client_socket = self.client_socket.as_ref();
-            _ = client_socket.log_message(LogMessageParams { typ: self.typ, message });
+            _ = client_socket.log_message(LogMessageParams {
+                typ: self.typ,
+                message,
+            });
         }
 
         Ok(buf.len())

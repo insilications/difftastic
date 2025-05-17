@@ -10,13 +10,19 @@ use anyhow::{Context, Result};
 use git2::{DiffOptions, ObjectType, Oid, Repository, Sort};
 use gxhash::gxhash64;
 
+use crate::lsp::GXHASH_SEED;
+
 /// Return all commits at/behind `rev` that modified `path`, newest first.
 /// Each entry is (summary, oid, *optional* `file_content`).
 ///
 /// `file_content` is
 ///   • `Some(Arc<str>)` – file existed in that commit (content is shared),
 ///   • `None`           – the commit deleted the file.
-fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Vec<(String, Oid, Option<Arc<str>>)>> {
+fn commits_touching_path(
+    repo: &Repository,
+    rev: &str,
+    path: &Path,
+) -> Result<Vec<(Option<Arc<str>>, Oid, Option<Arc<str>>)>> {
     let start_oid = repo.revparse_single(rev)?.id();
 
     let mut walk = repo.revwalk()?;
@@ -27,10 +33,7 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
     // libgit2 needs a UTF-8 pathspec
     let pathspec = path
         .to_str() // Fallible but zero-cost if valid. Or use `to_string_lossy()`
-        .context(format!(
-            "Path {} is not valid UTF-8 (libgit2 requires UTF-8 pathspecs)",
-            path.display()
-        ))?;
+        .context(format!("Path {} is not valid UTF-8 (libgit2 requires UTF-8 pathspecs)", path.display()))?;
     diff_opts.pathspec(pathspec);
 
     let mut out = Vec::new();
@@ -42,10 +45,7 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
 
         // ── Did the commit touch the given path? ───────────────────────────────
         let touched = if commit.parent_count() == 0 {
-            repo.diff_tree_to_tree(None, Some(&this_tree), Some(&mut diff_opts))?
-                .deltas()
-                .len()
-                > 0
+            repo.diff_tree_to_tree(None, Some(&this_tree), Some(&mut diff_opts))?.deltas().len() > 0
         } else {
             commit.parents().any(|p| {
                 repo.diff_tree_to_tree(Some(&p.tree().unwrap()), Some(&this_tree), Some(&mut diff_opts))
@@ -57,14 +57,8 @@ fn commits_touching_path(repo: &Repository, rev: &str, path: &Path) -> Result<Ve
 
         if touched {
             // 1) Commit summary (unchanged from before)
-            let summary = commit
-                .summary()
-                .map_or_else(|| "<no subject>".into(), std::borrow::ToOwned::to_owned);
-            // let summary = commit.summary().map_or_else(|| "<no subject>".into(), |s| s.to_owned());
-            // let summary = commit
-            //     .summary()
-            //     .map(|s| s.to_owned())
-            //     .unwrap_or_else(|| "<no subject>".into());
+            // Use Arc to share the summary string
+            let summary: Option<Arc<str>> = commit.summary().map(Arc::<str>::from);
 
             // 2) Fetch the file contents, if the blob still exists
             let file_content: Option<Arc<str>> = match this_tree.get_path(path) {
@@ -109,11 +103,7 @@ impl CommitId {
     ///   • or the exact position of a non-hex digit.
     pub fn from_hex(hex: &str) -> Result<Self, String> {
         if hex.len() != Self::HEX_LEN {
-            return Err(format!(
-                "expected {} hexadecimal characters, got {}",
-                Self::HEX_LEN,
-                hex.len()
-            ));
+            return Err(format!("expected {} hexadecimal characters, got {}", Self::HEX_LEN, hex.len()));
         }
         if !hex.is_ascii() {
             return Err("input contains non-ASCII characters".into());
@@ -215,8 +205,10 @@ type FilePath = Arc<PathBuf>;
 pub struct FileVersion {
     /// Full file contents at this revision.
     pub content: Arc<str>,
+    /// Hash of the file content, computed with gxhash.
+    pub content_hash: u64,
     /// First line of the commit message (“commit summary”).
-    pub summary: Arc<str>,
+    pub maybe_summary: Option<Arc<str>>,
 }
 
 /// A unique key for a `FileVersion`.
@@ -263,7 +255,8 @@ fn put_version(
     commit: CommitId,
     revspec: RevSpec,
     content: &Arc<str>,
-    summary: &Arc<str>,
+    content_hash: &u64,
+    maybe_summary: Option<&Arc<str>>,
 ) {
     // 1) Create one shared PathBuf
     let path_arc = Arc::new(path);
@@ -277,7 +270,9 @@ fn put_version(
         FileVersion {
             // Just clone the Arcs – no re-allocation
             content: Arc::clone(content),
-            summary: Arc::clone(summary),
+            content_hash: *content_hash,
+            maybe_summary: maybe_summary.cloned(),
+            // maybe_summary: maybe_summary.as_ref().map(Arc::clone),
         },
     );
 
@@ -325,10 +320,13 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
     for (revspec, commit_id) in per_path_index {
         if let Some(version) = versions.get(&VersionKey {
             commit: *commit_id,
-            path: Arc::clone(path_canonical),
+            // path: Arc::clone(path_canonical),
+            path: path_canonical.clone(),
         }) {
+            // let kk = version.maybe_summary.as_ref().map_or("<no summary>", |s| s);
             tracing::info!("Revspec        : {revspec}");
-            tracing::info!("Summary        : {}", version.summary);
+            tracing::info!("Summary        : {}", version.maybe_summary.as_ref().map_or("<no summary>", |s| s));
+            tracing::info!("Content Hash   : {:#x}", version.content_hash);
             tracing::info!("Content Length : {}\n", version.content.len());
         }
     }
@@ -356,6 +354,13 @@ impl CacheStateShared {
         self.repo = Some(Arc::new(Mutex::new(repo)));
         Ok(())
     }
+    
+    pub fn check_repo(&self) -> Result<()> {
+        if self.repo.is_none() {
+            return Err(anyhow::anyhow!("Repository is not set. Call set_repo first."));
+        }
+        Ok(())
+    }
 
     // Method to populate - takes &self because mutation happens *inside* the locks
     pub fn populate_history(&self, revspec: &str, path: &Path) -> Result<()> {
@@ -370,11 +375,20 @@ impl CacheStateShared {
             let mut revs_guard = self.revs.write().expect("Rev store lock poisoned");
 
             let mut index = 1;
-            for (summary_str, oid, maybe_content) in history {
+            for (maybe_summary, oid, maybe_content) in history {
                 let commit = CommitId::from_hex(&oid.to_string()).map_err(anyhow::Error::msg)?;
                 let revspec = format!("HEAD~{index}");
-                let content_arc = maybe_content.unwrap_or_else(|| Arc::<str>::from(""));
-                let summary_arc = Arc::<str>::from(summary_str);
+
+                #[allow(clippy::option_if_let_else)]
+                let (content_arc, content_hash): (Arc<str>, u64) = match maybe_content {
+                    Some(x) => {
+                        // Use gxhash to compute the hash of the content
+                        (x.clone(), gxhash64(x.as_bytes(), GXHASH_SEED))
+                    }
+                    None => (Arc::<str>::from(""), 0),
+                };
+
+                // let summary_arc = Arc::<str>::from(summary_str);
 
                 // Pass mutable references obtained from the lock guards
                 put_version(
@@ -384,7 +398,8 @@ impl CacheStateShared {
                     commit,
                     revspec,
                     &content_arc,
-                    &summary_arc,
+                    &content_hash,
+                    maybe_summary.as_ref(),
                 );
                 index += 1;
             }

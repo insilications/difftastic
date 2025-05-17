@@ -16,10 +16,7 @@ fn strict_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
     use std::io;
 
     fn impl_(path: PathBuf) -> std::io::Result<PathBuf> {
-        let head = path
-            .components()
-            .next()
-            .ok_or(io::Error::new(io::ErrorKind::Other, "empty path"))?;
+        let head = path.components().next().ok_or(io::Error::new(io::ErrorKind::Other, "empty path"))?;
         let disk_;
         let head = if let std::path::Component::Prefix(prefix) = head {
             if let std::path::Prefix::VerbatimDisk(disk) = prefix.kind() {
@@ -88,9 +85,7 @@ impl UriExt for lsp_types::Uri {
             }
 
             let host = format!("{host}:");
-            Some(Cow::Owned(
-                Path::new(&host).components().chain(path.components()).collect(),
-            ))
+            Some(Cow::Owned(Path::new(&host).components().chain(path.components()).collect()))
         } else {
             Some(path)
         }

@@ -5,12 +5,12 @@ use async_lsp::{
     panic::CatchUnwindLayer,
     server::LifecycleLayer,
     stdio::{PipeStdin, PipeStdout},
-    tracing::TracingLayer,
+    // tracing::TracingLayer,
 };
 use tower::ServiceBuilder;
+use tracing::Level;
 
-use crate::lsp::{logging, server::Server};
-
+use crate::lsp::{CHRONO_LOCAL, logging, server::Server};
 //  The file length limit. Files larger than this will be rejected from all interactions.
 //  The hard limit is `u32::MAX` due to following conditions.
 //  - The parser and the `rowan` library uses `u32` based indices.
@@ -47,16 +47,16 @@ use crate::lsp::{logging, server::Server};
 //     }
 // }
 
-// const CHRONO_LOCAL: &str = "%FT%T";
-
 pub async fn run_server_stdio() -> Result<()> {
-    // tracing_subscriber::fmt()
-    //     .with_max_level(Level::DEBUG)
-    //     .with_ansi(false)
-    //     .with_writer(std::io::stderr)
-    //     .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
-    //     .compact()
-    //     .init();
+    tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
+        .with_ansi(false)
+        .with_writer(std::io::stderr)
+        .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
+        // .compact()
+        .event_format(logging::CustomEventFormatter::new())
+        // .with_target(true)
+        .init();
 
     let concurrency = match std::thread::available_parallelism() {
         // Double the concurrency limit since many handlers are blocking anyway.
@@ -82,9 +82,9 @@ pub async fn run_server_stdio() -> Result<()> {
         tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(tokio::io::stdout()),
     );
 
-    let (server_main_loop, client) = async_lsp::MainLoop::new_server(|client| {
+    let (server_main_loop, _) = async_lsp::MainLoop::new_server(|client| {
         ServiceBuilder::new()
-            .layer(TracingLayer::default())
+            // .layer(TracingLayer::default())
             // .layer(MeterLayer)
             .layer(LifecycleLayer::default())
             .layer(CatchUnwindLayer::default())
@@ -93,7 +93,7 @@ pub async fn run_server_stdio() -> Result<()> {
             .service(Server::new_router(client))
     });
 
-    logging::setup_default_subscriber(client);
+    // logging::setup_default_subscriber(client);
 
     Ok(server_main_loop.run_buffered(stdin, stdout).await?)
 }

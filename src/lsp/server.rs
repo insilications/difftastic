@@ -7,18 +7,18 @@ use std::{
     future::{Future, ready},
     ops::ControlFlow,
     panic,
-    panic::UnwindSafe,
+    panic::{AssertUnwindSafe, UnwindSafe},
     path::{Path, PathBuf},
     sync::{Arc, Once},
 };
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Error, Result, bail};
 use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, router::Router};
 use gxhash::gxhash64;
 use lsp_types::{
     ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
-    InitializeResult, InitializedParams, LogMessageParams, MessageType, Registration, RegistrationParams, ServerInfo,
+    InitializeResult, InitializedParams, MessageType, Registration, RegistrationParams, ServerInfo, ShowMessageParams,
     Uri, notification as notif,
     notification::Notification,
     request::{
@@ -26,12 +26,13 @@ use lsp_types::{
     },
 };
 use tokio::{task, task::JoinHandle};
+use tracing::Instrument;
 
 use crate::{
     diff_for_lsp,
     display::json3::diffresult_to_ranges,
     lsp::{
-        cache_git,
+        GXHASH_SEED, LSP_SERVER_NAME, LSP_SERVER_VERSION, cache_git,
         capabilities::{NegotiatedCapabilities, negotiate_capabilities},
         config::{Config, WORKSPACE_CONFIG_KEY},
         lsp_ext,
@@ -44,10 +45,6 @@ use crate::{
 type NotifyResult = ControlFlow<async_lsp::Result<()>>;
 struct UpdateConfigEvent(serde_json::Value);
 
-const LSP_SERVER_NAME: &str = "difftastic-lsp";
-const LSP_SERVER_VERSION: &str = "0.1.0";
-const GXHASH_SEED: i64 = 0x87FA_3129;
-
 #[derive(Debug, Default)]
 struct OpenedFilesData {
     file_name: String,
@@ -57,6 +54,7 @@ struct OpenedFilesData {
 pub struct StateSnapshot {
     pub config: Arc<Config>,
     pub cache_state: cache_git::CacheStateShared,
+    pub vfs: vfs::Vfs,
     pub root_path: PathBuf,
 }
 
@@ -142,11 +140,10 @@ impl Server {
             tracing::error!("Failed to set cache_state repo for {}: {err}", self.root_path.display());
             return ready(Err(ResponseError::new(
                 ErrorCode::REQUEST_FAILED,
-                format!("Failed to populate history: {err}"),
+                format!("Failed to set cache_state repo for {}: {err}", self.root_path.display()),
             )));
         }
 
-        // *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(root_path);
         *Arc::get_mut(&mut self.config).expect("No concurrent access yet") = Config::new(self.root_path.clone());
 
         if let Some(options) = params.initialization_options {
@@ -156,11 +153,6 @@ impl Server {
                 self.on_update_config(UpdateConfigEvent(options));
             }
         }
-
-        // self.cache_state = Some(cache::CacheStateShared::new(&self.root_path).expect(
-        //     "Failed to create cache
-        // state",
-        // ));
 
         // async move {
         //     tracing::debug!("req::Initialize");
@@ -188,18 +180,17 @@ impl Server {
     #[allow(clippy::unused_self)]
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
         tracing::debug!("notif::Initialized");
-        self.client
-            .log_message(LogMessageParams {
-                typ: MessageType::INFO,
-                message: "1 notif::Initialized".into(),
-            })
-            .unwrap();
 
         if self.capabilities.workspace_configuration {
             tokio::spawn({
                 let mut client = self.client.clone();
                 async move {
-                    Self::register_did_change_configuration(&mut client).await;
+                    if let Err(err) = Self::register_did_change_configuration(&mut client).await {
+                        client.show_message_ext(
+                            MessageType::ERROR,
+                            format!("Failed to register DidChangeConfiguration: {err:#}"),
+                        );
+                    }
                 }
             });
         }
@@ -207,118 +198,112 @@ impl Server {
         ControlFlow::Continue(())
     }
 
-    // #[allow(clippy::needless_pass_by_value)]
-    // fn on_did_open_custom(
-    //     &mut self,
-    //     params: lsp_ext::DidOpenTextDocumentCustomParams,
-    // ) -> impl Future<Output = Result<Option<lsp_ext::DiffRangesResponse>, ResponseError>> {
-    //     tracing_to_json_pretty!(&params, "lsp_ext::DidOpenTextDocumentCustom");
-
-    //     let relative_stripped_path = Path::new(&params.text_document.uri)
-    //         .strip_prefix(&self.root_path)
-    //         .map_err(|err| {
-    //             tracing::error!("Failed to strip prefix: {err}");
-    //             ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
-    //                 ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
-    //             ))
-    //         })
-    //         .unwrap();
-
-    //     tracing::debug!(
-    //         "params.rev: {} - relative_stripped_path: {}",
-    //         &params.rev,
-    //         relative_stripped_path.display()
-    //     );
-
-    //     // Handle the Result returned by populate_history
-    //     if let Err(err) = self.cache_state.populate_history(&params.rev, relative_stripped_path) {
-    //         tracing::error!("Failed to populate history: {err}");
-    //         return ready(Err(ResponseError::new(
-    //             ErrorCode::REQUEST_FAILED,
-    //             format!("Failed to populate history: {err}"),
-    //         )));
-    //     }
-    //     // let response = lsp_ext::DiffRangesResponse { ranges: vec![] };
-
-    //     // self.cache_state
-    //     //     .as_ref()
-    //     //     .unwrap()
-    //     //     .iterate_path_versions(&relative_stripped_path);
-
-    //     let rhs_path_buf = PathBuf::from(&relative_stripped_path);
-
-    //     // Note: lookup_version now returns an owned FileVersion due to cloning
-    //     if let Some((commit_id, version)) = self.cache_state.lookup_version(relative_stripped_path, &params.rev) {
-    //         // Arc counts inside the cloned FileVersion will reflect sharing
-    //         tracing::debug!(
-    //             "Arc Counts : content: {} - summary: {}",
-    //             Arc::strong_count(&version.content), // Count on the cloned Arc
-    //             Arc::strong_count(&version.summary)  // Count on the cloned Arc
-    //         );
-    //         tracing::debug!("Path           : {}", relative_stripped_path.display());
-    //         tracing::debug!("Revspec        : {}", params.rev);
-    //         tracing::debug!("Commit         : {}", commit_id.short());
-    //         tracing::debug!("Summary        : {}", version.summary);
-    //         tracing::debug!("Content Length : {}", version.content.len());
-
-    //         match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
-    //             Ok(diff_result) => {
-    //                 if diff_result.has_reportable_change() {
-    //                     ready(Ok(Some(lsp_ext::DiffRangesResponse {
-    //                         ranges: diffresult_to_ranges(&diff_result),
-    //                     })))
-    //                     // match json3::print(&diff_result) {
-    //                     //     Ok(json) => ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: json }))),
-    //                     //     Err(err) => {
-    //                     //         tracing::error!("Failed to serialize lsp_ext::DiffRangesResponse: {err}");
-    //                     //         ready(Err(ResponseError::new(
-    //                     //             ErrorCode::INTERNAL_ERROR,
-    //                     //             format!("Failed to serialize lsp_ext::DiffRangesResponse: {err}"),
-    //                     //         )))
-    //                     //     }
-    //                     // }
-    //                 } else {
-    //                     tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
-    //                     ready(Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] })))
-    //                 }
-    //             }
-    //             Err(err) => ready(Err(err)),
-    //         }
-    //     } else {
-    //         tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
-    //         ready(Err(ResponseError::new(
-    //             ErrorCode::REQUEST_FAILED,
-    //             format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
-    //         )))
-    //     }
-    // }
-
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
         let uri: &Uri = &params.text_document.uri;
 
+        let file_pathbuf = if let Some(cow_path) = uri.to_file_path() {
+            cow_path.into_owned()
+        } else {
+            tracing::error!("Failed to convert URI to file path: {:?}", uri);
+            return ControlFlow::Continue(()); // Return early from on_did_open
+        };
+
         tracing::debug!(
             "notif::DidOpenTextDocument - params.text_document.uri: {} - params.text_document.language_id: {} - params.text_document.version: {}",
-            uri.to_file_path().unwrap_or_default().display(),
+            file_pathbuf.display(),
             params.text_document.language_id,
             params.text_document.version
         );
 
-        let file_path = uri.to_file_path().unwrap_or_default();
+        // self.opened_files
+        //     .insert(file_path.into_owned(), OpenedFilesData::default());
+        // let client = self.client.clone();
+        self.spawn_with_snapshot(move |snap| {
+            let ret = with_catch_unwind(
+                "on_did_open",
+                // Use AssertUnwindSafe to allow catching panics in the closure because the compiler concludes that
+                // `lsp_types::Uri`, captured in the closure, is not `RefUnwindSafe` because it (via `fluent_uri::Uri`)
+                // contains an `UnsafeCell` for which `RefUnwindSafe` is not implemented. While `Cell<T>` (where `T` is
+                // `RefUnwindSafe`) *is* `RefUnwindSafe`, if the `fluent_uri::Uri` type itself doesn't have an explicit
+                // (possibly `unsafe`) implementation of `RefUnwindSafe`, the compiler conservatively assumes it's not.
+                // This often happens when a crate author hasn't audited their type for unwind safety or hasn't added
+                // the `unsafe impl RefUnwindSafe for Uri {}` declaration.
+                AssertUnwindSafe(|| {
+                    let txt_bytes: &[u8] = params.text_document.text.as_bytes();
+                    let txt_hash: u64 = gxhash64(txt_bytes, GXHASH_SEED);
+                    tracing::debug!("notif::DidOpenTextDocument - txt_hash: {:#x}", txt_hash);
 
-        self.opened_files
-            .insert(file_path.into_owned(), OpenedFilesData::default());
+                    snap.vfs.open(
+                        params.text_document.uri.clone(),
+                        params.text_document.version,
+                        &params.text_document.text,
+                    );
+                    // let txt = snap.vfs.get_text(uri).unwrap_or_default();
+                    // tracing::debug!("notif::DidOpenTextDocument - snap.vfs.get_text: {}", txt);
 
-        self.vfs
-            .open(uri.clone(), params.text_document.version, &params.text_document.text);
+                    let relative_stripped_path = file_pathbuf
+                        .strip_prefix(&snap.root_path)
+                        .with_context(|| format!("Failed to strip prefix for {}", file_pathbuf.display()))?;
 
-        // let txt = self.vfs.get_text(uri).unwrap_or_default();
-        // tracing::debug!("notif::DidOpenTextDocument - self.vfs.get_text: {}", txt);
+                    let blame_highlighting_parent_level = &snap.config.blame_highlighting_parent_level;
 
-        let txt_bytes: &[u8] = params.text_document.text.as_bytes();
-        let txt_hash = gxhash64(txt_bytes, GXHASH_SEED);
-        tracing::debug!("notif::DidOpenTextDocument - txt_hash: {:#x}", txt_hash);
+                    tracing::debug!(
+                        "blame_highlighting_parent_level: {} - relative_stripped_path: {}",
+                        &blame_highlighting_parent_level,
+                        relative_stripped_path.display()
+                    );
+
+                    // Handle the Result returned by populate_history
+                    if let Err(err) =
+                        snap.cache_state.populate_history(blame_highlighting_parent_level, relative_stripped_path)
+                    {
+                        tracing::error!("Failed to populate history: {err}");
+                        return Err(Error::new(ResponseError::new(
+                            ErrorCode::REQUEST_FAILED,
+                            format!("Failed to populate history: {err}"),
+                        )));
+                    }
+
+                    // Note: lookup_version now returns an owned FileVersion due to cloning
+                    if let Some((commit_id, version)) =
+                        snap.cache_state.lookup_version(relative_stripped_path, blame_highlighting_parent_level)
+                    {
+                        // Arc counts inside the cloned FileVersion will reflect sharing
+                        tracing::debug!(
+                            "Arc Counts : content: {} - summary: {}",
+                            Arc::strong_count(&version.content), // Count on the cloned Arc
+                            version
+                                .maybe_summary
+                                .as_ref()
+                                .map_or_else(|| "<no summary>".to_owned(), |s| Arc::strong_count(s).to_string())
+                        );
+                        tracing::debug!("Path           : {}", &relative_stripped_path.display());
+                        tracing::debug!("Revspec        : {}", blame_highlighting_parent_level);
+                        // &commit_id.short() VS commit_id.short()
+                        tracing::debug!("Commit         : {}", &commit_id.short());
+                        tracing::debug!(
+                            "Summary        : {}",
+                            version.maybe_summary.as_ref().map_or("<no summary>", |s| s)
+                        );
+                        tracing::debug!("Content Hash   : {:#x}", &version.content_hash);
+                        tracing::debug!("Content Length : {}", &version.content.len());
+                    }
+
+                    Ok(())
+                }),
+            );
+            match ret {
+                Ok(()) => {
+                    // let _: Result<_, _> = client.emit(UpdateDiagnostics(version, diags));
+                    tracing::debug!("notif::DidOpenTextDocument - FINISHED");
+                }
+                // Ignore cancellations caused by editing.
+                Err(err) if err.is::<Cancelled>() => {}
+                Err(err) => tracing::error!("Failed to update diagnostics: {err:#}"),
+            }
+        });
 
         ControlFlow::Continue(())
     }
@@ -358,10 +343,7 @@ impl Server {
             tracing::debug!("{} - content_change.text: {}", file_path_display, c.text);
         }
 
-        if let Err(e) = self
-            .vfs
-            .apply_changes(uri, params.text_document.version, &params.content_changes)
-        {
+        if let Err(e) = self.vfs.apply_changes(uri, params.text_document.version, &params.content_changes) {
             tracing::error!("Failed to apply changes for {}: {e:#}", file_path_display);
         }
 
@@ -383,6 +365,7 @@ impl Server {
 
     #[allow(clippy::needless_pass_by_value)]
     #[allow(clippy::unused_self)]
+    #[tracing::instrument(skip_all)]
     fn on_did_change_configuration(&mut self, params: DidChangeConfigurationParams) -> NotifyResult {
         tracing_to_json_pretty!(&params, "notif::DidChangeConfiguration");
         self.spawn_reload_config();
@@ -390,33 +373,40 @@ impl Server {
         ControlFlow::Continue(())
     }
 
+    #[tracing::instrument(skip_all)]
     fn spawn_reload_config(&self) {
-        if !self.capabilities.workspace_configuration {
-            return;
-        }
-        let mut client = self.client.clone();
-        tokio::spawn(async move {
-            let ret = client
-                .configuration(ConfigurationParams {
-                    items: vec![ConfigurationItem {
-                        scope_uri: None,
-                        section: Some(WORKSPACE_CONFIG_KEY.into()),
-                    }],
-                })
-                .await;
-            let mut v = match ret {
-                Ok(v) => v,
-                Err(err) => {
-                    tracing::error!("Failed to update config: {err}");
-                    // client.show_message_ext(MessageType::ERROR, format_args!("Failed to update config: {err}"));
-                    return;
+        if self.capabilities.workspace_configuration {
+            tokio::spawn(
+                {
+                    let mut client = self.client.clone();
+                    async move {
+                        // info_span!("spawn_reload_config");
+                        match client
+                            .configuration(ConfigurationParams {
+                                items: vec![ConfigurationItem {
+                                    scope_uri: None,
+                                    section: Some(WORKSPACE_CONFIG_KEY.into()),
+                                }],
+                            })
+                            .await
+                        {
+                            Ok(mut v) => {
+                                let v = v.pop().unwrap_or_default();
+                                tracing::debug!("Updating config: {v:?}");
+                                let _: Result<_, _> = client.emit(UpdateConfigEvent(v));
+                            }
+                            Err(err) => {
+                                client.show_message_ext(
+                                    MessageType::ERROR,
+                                    format_args!("Failed to update config: {err:#}"),
+                                );
+                            }
+                        }
+                    }
                 }
-            };
-
-            let v = v.pop().unwrap_or_default();
-            tracing::debug!("Updating config: {v}");
-            let _: Result<_, _> = client.emit(UpdateConfigEvent(v));
-        });
+                .in_current_span(),
+            );
+        }
     }
 
     #[allow(clippy::needless_pass_by_value)]
@@ -433,76 +423,36 @@ impl Server {
             let msg = std::iter::once("Failed to apply some settings:")
                 .chain(errors.iter().flat_map(|s| ["\n- ", s]))
                 .collect::<String>();
-            tracing::error!("{msg}");
-            // self.client.show_message_ext(MessageType::ERROR, msg);
+            self.client.show_message_ext(MessageType::ERROR, msg);
         }
 
         ControlFlow::Continue(())
     }
 
-    async fn register_did_change_configuration(client: &mut ClientSocket) {
-        let register_options = DidChangeConfigurationParams {
-            settings: serde_json::to_value(WORKSPACE_CONFIG_KEY).unwrap(),
+    async fn register_did_change_configuration(client: &mut ClientSocket) -> Result<()> {
+        let settings_json_value = serde_json::to_value(WORKSPACE_CONFIG_KEY)
+            .with_context(|| format!("Failed to serialize WORKSPACE_CONFIG_KEY ('{WORKSPACE_CONFIG_KEY}') to JSON",))?;
+
+        let did_change_params_for_registration = DidChangeConfigurationParams {
+            settings: settings_json_value,
         };
+
+        let register_options_json_value = serde_json::to_value(&did_change_params_for_registration)
+            .context("Failed to serialize DidChangeConfigurationParams to JSON for registration options")?;
+
         let params = RegistrationParams {
             registrations: vec![Registration {
                 id: notif::DidChangeConfiguration::METHOD.into(),
                 method: notif::DidChangeConfiguration::METHOD.into(),
-                register_options: Some(serde_json::to_value(register_options).unwrap()),
+                register_options: Some(register_options_json_value),
             }],
         };
-        if let Err(err) = client.register_capability(params).await {
-            tracing::error!("Failed to register DidChangeConfiguration: {err:#}");
-            // client.show_message_ext(MessageType::ERROR, format!("Failed to watch flake files: {err:#}"));
-        }
-        tracing::info!("Registered DidChangeConfiguration");
-    }
 
-    fn spawn_update_diff_cache(&mut self) {
-        // self.diagnostic_version += 1;
-        // let version = self.diagnostic_version;
+        // The existing error handling for register_capability can now also use `?`
+        client.register_capability(params).await.context("Failed to register capability for DidChangeConfiguration")?;
 
-        // let client = self.client.clone();
-        // let opened_files = {
-        //     let vfs = self.vfs.read().unwrap();
-        //     self.opened_files
-        //         .keys()
-        //         .filter_map(|uri| {
-        //             let file = vfs.file_for_uri(uri).ok()?;
-        //             let line_map = vfs.line_map_for_file(file);
-        //             Some((uri.clone(), file, line_map))
-        //         })
-        //         .collect::<Vec<_>>()
-        // };
-
-        // self.spawn_with_snapshot(move |snap| {
-        //     let ret = with_catch_unwind("diagnostics", || {
-        //         opened_files
-        //             .into_iter()
-        //             .map(|(uri, file, line_map)| {
-        //                 let diags = if !snap.config.diagnostics_excluded_files.contains(&uri) {
-        //                     let mut diags = snap.analysis.diagnostics(file)?;
-        //                     diags.retain(|diag| {
-        //                         !snap.config.diagnostics_ignored.contains(diag.code())
-        //                     });
-        //                     diags.truncate(MAX_DIAGNOSTICS_CNT);
-        //                     convert::to_diagnostics(&uri, file, &line_map, &diags)
-        //                 } else {
-        //                     Vec::new()
-        //                 };
-        //                 Ok((uri, diags))
-        //             })
-        //             .collect::<Result<Vec<_>>>()
-        //     });
-        //     match ret {
-        //         Ok(diags) => {
-        //             let _: Result<_, _> = client.emit(UpdateDiagnostics(version, diags));
-        //         }
-        //         // Ignore cancellations caused by editing.
-        //         Err(err) if err.is::<Cancelled>() => {}
-        //         Err(err) => tracing::error!("Failed to update diagnostics: {err:#}"),
-        //     }
-        // });
+        tracing::debug!("Registered DidChangeConfiguration");
+        Ok(())
     }
 
     fn spawn_with_snapshot<T: Send + 'static>(
@@ -511,7 +461,7 @@ impl Server {
     ) -> JoinHandle<T> {
         let snap = StateSnapshot {
             // analysis: self.host.snapshot(),
-            // vfs: Arc::clone(&self.vfs),
+            vfs: self.vfs.clone(),
             config: Arc::clone(&self.config),
             cache_state: self.cache_state.clone(),
             // cache_state: cache::CacheStateShared,
@@ -587,6 +537,25 @@ fn error_to_response(err: anyhow::Error) -> ResponseError {
     }
 }
 
+trait ClientExt: BorrowMut<ClientSocket> {
+    #[inline]
+    fn show_message_ext(&mut self, typ: MessageType, msg: impl fmt::Display) {
+        match typ {
+            MessageType::ERROR => tracing::error!("{msg}"),
+            MessageType::WARNING => tracing::warn!("{msg}"),
+            MessageType::INFO => tracing::info!("{msg}"),
+            MessageType::LOG => tracing::debug!("{msg}"),
+            _ => tracing::debug!("{msg}"),
+        }
+        let _: Result<_, _> = self.borrow_mut().show_message(ShowMessageParams {
+            typ,
+            message: msg.to_string(),
+        });
+    }
+}
+
+impl ClientExt for ClientSocket {}
+
 #[derive(Debug)]
 pub enum Cancelled {
     PendingWrite,
@@ -639,17 +608,14 @@ pub fn on_did_open_custom(
         .strip_prefix(&snap.root_path)
         .map_err(|err| {
             tracing::error!("Failed to strip prefix: {err}");
-            ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(
-                ResponseError::new(ErrorCode::REQUEST_FAILED, format!("Failed to strip prefix: {err}")),
-            ))
+            ready(Err::<Option<lsp_ext::DiffRangesResponse>, ResponseError>(ResponseError::new(
+                ErrorCode::REQUEST_FAILED,
+                format!("Failed to strip prefix: {err}"),
+            )))
         })
         .unwrap();
 
-    tracing::debug!(
-        "params.rev: {} - relative_stripped_path: {}",
-        &params.rev,
-        relative_stripped_path.display()
-    );
+    tracing::debug!("params.rev: {} - relative_stripped_path: {}", &params.rev, relative_stripped_path.display());
 
     // Handle the Result returned by populate_history
     if let Err(err) = snap.cache_state.populate_history(&params.rev, relative_stripped_path) {
@@ -674,13 +640,17 @@ pub fn on_did_open_custom(
         tracing::debug!(
             "Arc Counts : content: {} - summary: {}",
             Arc::strong_count(&version.content), // Count on the cloned Arc
-            Arc::strong_count(&version.summary)  // Count on the cloned Arc
+            version
+                .maybe_summary
+                .as_ref()
+                .map_or_else(|| "<no summary>".to_owned(), |s| Arc::strong_count(s).to_string())
         );
         tracing::debug!("Path           : {}", &relative_stripped_path.display());
         tracing::debug!("Revspec        : {}", &params.rev);
         // &commit_id.short() VS commit_id.short()
         tracing::debug!("Commit         : {}", &commit_id.short());
-        tracing::debug!("Summary        : {}", &version.summary);
+        tracing::debug!("Summary        : {}", version.maybe_summary.as_ref().map_or("<no summary>", |s| s));
+        tracing::debug!("Content Hash   : {:#x}", &version.content_hash);
         tracing::debug!("Content Length : {}", &version.content.len());
 
         match diff_for_lsp(&rhs_path_buf, &version.content, &params.text_document.language_id) {
@@ -701,17 +671,16 @@ pub fn on_did_open_custom(
                     // }
                 } else {
                     tracing::debug!("No changes detected for path {}", rhs_path_buf.display());
-                    Ok(Some(lsp_ext::DiffRangesResponse { ranges: vec![] }))
+                    Ok(Some(lsp_ext::DiffRangesResponse {
+                        ranges: vec![],
+                    }))
                 }
             }
-            Err(err) => Err(anyhow::Error::new(ResponseError::new(
-                ErrorCode::REQUEST_FAILED,
-                format!("{err}"),
-            ))),
+            Err(err) => Err(Error::new(ResponseError::new(ErrorCode::REQUEST_FAILED, format!("{err}")))),
         }
     } else {
         tracing::debug!("Version {} not found for path {}", &params.rev, rhs_path_buf.display());
-        Err(anyhow::Error::new(ResponseError::new(
+        Err(Error::new(ResponseError::new(
             ErrorCode::REQUEST_FAILED,
             format!("Version {} not found for path {}", &params.rev, rhs_path_buf.display()),
         )))

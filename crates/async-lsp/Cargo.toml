@@ -79,9 +79,6 @@ tokio-util         = { version = "0.7.15", features = ["compat"] }
 tower              = "0.5.2"
 tracing-subscriber = { version = "0.3.19", features = ["chrono", "fmt", "local-time"] }
 
-[profile.bench]
-debug = 1
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

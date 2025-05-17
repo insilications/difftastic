@@ -43,7 +43,7 @@ pub struct VfsInner {
 }
 
 /// Cheap clone = another Arc handle.
-#[derive(Clone, Default)]
+#[derive(Default, Debug, Clone)]
 pub struct Vfs(pub Arc<RwLock<VfsInner>>);
 
 impl Vfs {
@@ -67,18 +67,12 @@ impl Vfs {
     pub fn apply_changes(&self, uri: &Uri, new_version: i32, changes: &[TextDocumentContentChangeEvent]) -> Result<()> {
         let mut inner = self.0.write().unwrap();
         let doc = inner.docs.get_mut(uri).with_context(|| {
-            format!(
-                "Document {} not found (did you forget didOpen?)",
-                uri.to_file_path().unwrap_or_default().display()
-            )
+            format!("Document {} not found (did you forget didOpen?)", uri.to_file_path().unwrap_or_default().display())
         })?;
 
         // Prevent out-of-order edits.
         if new_version <= doc.version {
-            bail!(
-                "Stale change: incoming version {new_version} <= stored version {}",
-                doc.version
-            );
+            bail!("Stale change: incoming version {new_version} <= stored version {}", doc.version);
         }
 
         for change in changes {
@@ -136,11 +130,7 @@ fn lsp_position_to_char_index(text: &Rope, pos: Position) -> Result<usize> {
 
     // 1. Guard: line must exist.
     if line >= text.len_lines() {
-        bail!(
-            "Position line {} out of bounds – document has {} lines",
-            line,
-            text.len_lines()
-        );
+        bail!("Position line {} out of bounds – document has {} lines", line, text.len_lines());
     }
 
     // 2. Find char offset of line start.

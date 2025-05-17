@@ -1,9 +1,11 @@
-use std::future::Future;
-use std::io;
-use std::ops::ControlFlow;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::time::Instant;
+use std::{
+    future::Future,
+    io,
+    ops::ControlFlow,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Instant,
+};
 
 use async_lsp::{AnyEvent, AnyNotification, AnyRequest, LspService};
 use serde::Serialize;
@@ -21,9 +23,9 @@ where
     S::Response: Serialize,
     S::Error: Serialize,
 {
-    type Response = S::Response;
     type Error = S::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + 'static>>;
+    type Response = S::Response;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
@@ -96,6 +98,8 @@ impl<S> Layer<S> for MeterLayer {
     type Service = Meter<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        Meter { service: inner }
+        Meter {
+            service: inner,
+        }
     }
 }
