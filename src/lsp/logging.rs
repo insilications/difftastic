@@ -42,9 +42,11 @@ where
         event: &Event<'_>,          // The event to format
     ) -> std::fmt::Result {
         // 1. Write time (e.g., 025-05-20 02:00:25)
-        if self.timer.format_time(&mut writer).is_err() {
-            writer.write_str("<unknown time>")?;
-        }
+        self.timer.format_time(&mut writer)?;
+        // if self.timer.format_time(&mut writer).is_err() {
+        //     writer.write_str("<unknown time>")?;
+        // }
+
         // 2. Write space
         writer.write_char(' ')?;
 

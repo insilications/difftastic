@@ -113,11 +113,12 @@ impl Server {
     }
 
     #[allow(clippy::needless_pass_by_value)]
+    #[tracing::instrument(skip_all)]
     pub fn on_initialize(
         &mut self,
         params: InitializeParams,
     ) -> impl Future<Output = Result<InitializeResult, ResponseError>> {
-        tracing_to_json!(&params, "Initialize");
+        tracing_to_json!(&params);
 
         let (server_caps, final_caps) = negotiate_capabilities(&params);
         self.capabilities = final_caps;
@@ -131,7 +132,7 @@ impl Server {
             .and_then(|ws| ws.uri.to_file_path())
             .map_or_else(|| PathBuf::from("."), PathBuf::from);
 
-        tracing::info!("root_path: {}", self.root_path.display());
+        tracing::info!("Workspace Root Path: {}", self.root_path.display());
 
         tracing_to_json_pretty!(&server_caps, "Server Capabilities");
         tracing_to_json_pretty!(&self.capabilities, "Client Capabilities");
@@ -368,6 +369,7 @@ impl Server {
     #[tracing::instrument(skip_all)]
     fn on_did_change_configuration(&mut self, params: DidChangeConfigurationParams) -> NotifyResult {
         tracing_to_json_pretty!(&params, "notif::DidChangeConfiguration");
+        tracing_to_json_pretty!(&params);
         self.spawn_reload_config();
 
         ControlFlow::Continue(())
@@ -410,6 +412,7 @@ impl Server {
     }
 
     #[allow(clippy::needless_pass_by_value)]
+    #[tracing::instrument(skip_all)]
     fn on_update_config(&mut self, value: UpdateConfigEvent) -> NotifyResult {
         let mut config = Config::clone(&self.config);
         let mut errors = Vec::new();

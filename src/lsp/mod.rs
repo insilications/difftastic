@@ -14,34 +14,39 @@ pub const LSP_SERVER_NAME: &str = "difftastic-lsp";
 pub const LSP_SERVER_VERSION: &str = "0.1.0";
 pub const GXHASH_SEED: i64 = 0x87FA_3129;
 
-#[doc(hidden)]
-#[macro_export] // Implementation: label is *any* expression
-macro_rules! __tracing_to_json_impl {
-    ($value:expr, $label:expr) => {{
-        // Evaluate the expression only once
+/// `tracing_to_json` (compact JSON)
+#[macro_export]
+macro_rules! tracing_to_json {
+    ($value:expr, $label:literal $(,)?) => {{
         if ::tracing::enabled!(::tracing::Level::DEBUG) {
             let __ttj_val = &$value;
 
             match ::serde_json::to_string(__ttj_val) {
                 Ok(__ttj_json) => {
-                    ::tracing::debug!(
-                        /* ── structured fields ── */
-                        label = $label,
-                        expr  = ::core::stringify!($value),
-                        json  = %__ttj_json,
-                        /* ── human-readable message ── */
-                        "{} - {}: {}",
-                        $label,
-                        ::core::stringify!($value),
-                        __ttj_json
-                    );
+                    ::tracing::debug!("{} - {}: {}", $label, ::core::stringify!($value), __ttj_json);
                 }
                 Err(__err) => {
                     ::tracing::debug!(
-                        label = $label,
-                        expr  = ::core::stringify!($value),
-                        error = %__err,
-                        value = ?__ttj_val,
+                        "Failed to serialise `{}` ({}): {:?}",
+                        ::core::stringify!($value),
+                        __err,
+                        __ttj_val
+                    );
+                }
+            }
+        }
+    }};
+
+    ($value:expr $(,)?) => {{
+        if ::tracing::enabled!(::tracing::Level::DEBUG) {
+            let __ttj_val = &$value;
+
+            match ::serde_json::to_string(__ttj_val) {
+                Ok(__ttj_json) => {
+                    ::tracing::debug!("{}: {}", ::core::stringify!($value), __ttj_json);
+                }
+                Err(__err) => {
+                    ::tracing::debug!(
                         "Failed to serialise `{}` ({}): {:?}",
                         ::core::stringify!($value),
                         __err,
@@ -53,27 +58,10 @@ macro_rules! __tracing_to_json_impl {
     }};
 }
 
-#[macro_export] // Public entry point (label optional)
-macro_rules! tracing_to_json {
-    // ❶ Original “value + literal label” form keeps the old syntax intact
-    ($value:expr, $label:literal $(,)?) => {
-        $crate::__tracing_to_json_impl!($value, $label)
-    };
-
-    // ❷ NEW form: only the value – we generate a fallback label automatically
-    ($value:expr $(,)?) => {
-        $crate::__tracing_to_json_impl!($value, ::core::stringify!($value))
-    };
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// tracing_to_json_pretty (DEBUG, pretty-printed JSON)
-// ──────────────────────────────────────────────────────────────────────────────
-
-#[doc(hidden)]
+/// `tracing_to_json_pretty` (pretty-printed JSON)
 #[macro_export]
-macro_rules! __tracing_to_json_pretty_impl {
-    ($value:expr, $label:expr) => {{
+macro_rules! tracing_to_json_pretty {
+    ($value:expr, $label:literal $(,)?) => {{
         if ::tracing::enabled!(::tracing::Level::DEBUG) {
             let __ttj_val = &$value;
 
@@ -92,19 +80,26 @@ macro_rules! __tracing_to_json_pretty_impl {
             }
         }
     }};
-}
 
-#[macro_export]
-macro_rules! tracing_to_json_pretty {
-    // ❶ Explicit label
-    ($value:expr, $label:literal $(,)?) => {
-        $crate::__tracing_to_json_pretty_impl!($value, $label)
-    };
+    ($value:expr $(,)?) => {{
+        if ::tracing::enabled!(::tracing::Level::DEBUG) {
+            let __ttj_val = &$value;
 
-    // ❷ Implicit label = token stringification of the value
-    ($value:expr $(,)?) => {
-        $crate::__tracing_to_json_pretty_impl!($value, ::core::stringify!($value))
-    };
+            match ::serde_json::to_string_pretty(__ttj_val) {
+                Ok(__ttj_json) => {
+                    ::tracing::debug!("{}: {}", ::core::stringify!($value), __ttj_json);
+                }
+                Err(__err) => {
+                    ::tracing::debug!(
+                        "Failed to serialise `{}` ({}): {:?}",
+                        ::core::stringify!($value),
+                        __err,
+                        __ttj_val
+                    );
+                }
+            }
+        }
+    }};
 }
 
 // #[macro_export]

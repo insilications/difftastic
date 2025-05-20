@@ -85,6 +85,7 @@ use humansize::{BINARY, FormatSizeOptions, format_size};
 use owo_colors::OwoColorize;
 use rayon::prelude::*;
 use strum::IntoEnumIterator;
+use tracing::Level;
 use typed_arena::Arena;
 
 use crate::{
@@ -92,7 +93,7 @@ use crate::{
     dijkstra::mark_syntax,
     display::style::BackgroundColor,
     lines::MaxLine,
-    lsp::custom::run_server_stdio,
+    lsp::{CHRONO_LOCAL, custom::run_lsp_server_stdio, logging},
     options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode},
     parse::{syntax::init_all_info, tree_sitter_parser as tsp},
     summary::{DiffResult, DiffResultLsp, FileContent, FileFormat},
@@ -147,11 +148,21 @@ fn main() {
     reset_sigpipe();
 
     if options::parse_lsp_opt() {
+        // tracing_subscriber::fmt()
+        //     .with_max_level(Level::DEBUG)
+        //     .with_ansi(false)
+        //     .with_writer(std::io::stderr)
+        //     .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
+        //     .with_target(true)
+        //     // .compact()
+        //     .event_format(logging::CustomEventFormatter::new())
+        //     .init();
+
         let ret = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("Failed to spawn tokio runtime for the LSP server mode.")
-            .block_on(run_server_stdio());
+            .block_on(run_lsp_server_stdio());
         match ret {
             Ok(()) => {}
             Err(err) => {
@@ -271,13 +282,8 @@ fn main() {
                 set_exit_code,
                 language_overrides,
             } => {
-                let diff_result = diff_conflicts_file(
-                    &display_path,
-                    &path,
-                    &display_options,
-                    &diff_options,
-                    &language_overrides,
-                );
+                let diff_result =
+                    diff_conflicts_file(&display_path, &path, &display_options, &diff_options, &language_overrides);
 
                 print_diff_result(&display_options, &diff_result);
 
@@ -310,7 +316,11 @@ fn main() {
                     print_warning(
                         &format!(
                             "You've specified the same {} twice.",
-                            if is_dir { "directory" } else { "file" }
+                            if is_dir {
+                                "directory"
+                            } else {
+                                "file"
+                            }
                         ),
                         &display_options,
                     );
@@ -537,10 +547,7 @@ fn diff_conflicts_file(
         None => "the right file".to_owned(),
     };
 
-    let extra_info = format!(
-        "Showing the result of replacing every conflict in {} with {}.",
-        lhs_name, rhs_name
-    );
+    let extra_info = format!("Showing the result of replacing every conflict in {} with {}.", lhs_name, rhs_name);
 
     diff_file_content(
         display_path,
@@ -724,7 +731,11 @@ fn diff_file_content(
                                     "{} {} parse error{}, exceeded DFT_PARSE_ERROR_LIMIT",
                                     error_count,
                                     language_name(language),
-                                    if error_count == 1 { "" } else { "s" }
+                                    if error_count == 1 {
+                                        ""
+                                    } else {
+                                        "s"
+                                    }
                                 ),
                             };
 
@@ -980,9 +991,7 @@ fn diff_lsp_content(
     let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
 
     if lhs_src == rhs_src {
-        let file_format = language.map_or(FileFormat::PlainText, |language| {
-            FileFormat::SupportedLanguage(language)
-        });
+        let file_format = language.map_or(FileFormat::PlainText, |language| FileFormat::SupportedLanguage(language));
 
         // If the two files are byte-for-byte identical, return early
         // rather than doing any more work.
@@ -1093,7 +1102,11 @@ fn diff_lsp_content(
                                     "{} {} parse error{}, exceeded DFT_PARSE_ERROR_LIMIT",
                                     error_count,
                                     language_name(language),
-                                    if error_count == 1 { "" } else { "s" }
+                                    if error_count == 1 {
+                                        ""
+                                    } else {
+                                        "s"
+                                    }
                                 ),
                             };
 

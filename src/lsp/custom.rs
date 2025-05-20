@@ -47,15 +47,15 @@ use crate::lsp::{CHRONO_LOCAL, logging, server::Server};
 //     }
 // }
 
-pub async fn run_server_stdio() -> Result<()> {
+pub async fn run_lsp_server_stdio() -> Result<()> {
     tracing_subscriber::fmt()
         .with_max_level(Level::DEBUG)
         .with_ansi(false)
         .with_writer(std::io::stderr)
         .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
+        .with_target(true)
         // .compact()
         .event_format(logging::CustomEventFormatter::new())
-        // .with_target(true)
         .init();
 
     let concurrency = match std::thread::available_parallelism() {
@@ -66,9 +66,7 @@ pub async fn run_server_stdio() -> Result<()> {
             2.try_into().expect("2 is not 0")
         }
     };
-    tracing::info!("Max concurrent requests: {concurrency}");
-
-    // let (stdin2, stdout2) = (tokio::io::stdin(), tokio::io::stdout());
+    tracing::debug!("Max concurrent requests: {concurrency}");
 
     // Prefer truly asynchronous piped stdin/stdout without blocking tasks.
     #[cfg(unix)]
