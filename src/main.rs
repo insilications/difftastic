@@ -85,7 +85,6 @@ use humansize::{BINARY, FormatSizeOptions, format_size};
 use owo_colors::OwoColorize;
 use rayon::prelude::*;
 use strum::IntoEnumIterator;
-use tracing::Level;
 use typed_arena::Arena;
 
 use crate::{
@@ -93,7 +92,7 @@ use crate::{
     dijkstra::mark_syntax,
     display::style::BackgroundColor,
     lines::MaxLine,
-    lsp::{CHRONO_LOCAL, custom::run_lsp_server_stdio, logging},
+    lsp::custom::run_lsp_server_stdio,
     options::{DiffOptions, DisplayMode, DisplayOptions, FileArgument, Mode},
     parse::{syntax::init_all_info, tree_sitter_parser as tsp},
     summary::{DiffResult, DiffResultLsp, FileContent, FileFormat},
@@ -139,7 +138,6 @@ fn reset_sigpipe() {
 }
 
 /// The entrypoint.
-// #[tokio::main(flavor = "current_thread")]
 fn main() {
     if env::var(BACKTRACE_ENV).is_err() {
         env::set_var(BACKTRACE_ENV, "short");
@@ -148,16 +146,6 @@ fn main() {
     reset_sigpipe();
 
     if options::parse_lsp_opt() {
-        // tracing_subscriber::fmt()
-        //     .with_max_level(Level::DEBUG)
-        //     .with_ansi(false)
-        //     .with_writer(std::io::stderr)
-        //     .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(CHRONO_LOCAL.into()))
-        //     .with_target(true)
-        //     // .compact()
-        //     .event_format(logging::CustomEventFormatter::new())
-        //     .init();
-
         let ret = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()

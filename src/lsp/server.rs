@@ -70,6 +70,8 @@ pub struct Server {
     vfs: vfs::Vfs,
 }
 
+// TODO: review all usage of `.expect()` and `.unwrap()` in this file and convert them to proper error handling.
+
 impl Server {
     pub fn new_router(client: ClientSocket) -> Router<Self> {
         let this = Self::new(client);
@@ -112,7 +114,6 @@ impl Server {
         }
     }
 
-    #[allow(clippy::needless_pass_by_value)]
     #[tracing::instrument(skip_all)]
     pub fn on_initialize(
         &mut self,
@@ -178,7 +179,7 @@ impl Server {
         }))
     }
 
-    #[allow(clippy::unused_self)]
+    #[tracing::instrument(skip_all)]
     fn on_initialized(&mut self, _params: InitializedParams) -> NotifyResult {
         tracing::debug!("notif::Initialized");
 
@@ -193,34 +194,35 @@ impl Server {
                         );
                     }
                 }
+                .in_current_span()
             });
         }
 
         ControlFlow::Continue(())
     }
 
-    #[allow(clippy::needless_pass_by_value)]
-    #[allow(clippy::unused_self)]
+    #[tracing::instrument(skip_all)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
         let uri: &Uri = &params.text_document.uri;
-
         let file_pathbuf = if let Some(cow_path) = uri.to_file_path() {
             cow_path.into_owned()
         } else {
-            tracing::error!("Failed to convert URI to file path: {:?}", uri);
+            tracing::error!("Failed to convert URI to file path: {:?}", &uri);
             return ControlFlow::Continue(()); // Return early from on_did_open
         };
 
         tracing::debug!(
-            "notif::DidOpenTextDocument - params.text_document.uri: {} - params.text_document.language_id: {} - params.text_document.version: {}",
-            file_pathbuf.display(),
-            params.text_document.language_id,
-            params.text_document.version
+            "notif::DidOpenTextDocument - params.text_document.uri: {} - params.text_document.language_id: {} -
+        params.text_document.version: {}",
+            &file_pathbuf.display(),
+            &params.text_document.language_id,
+            &params.text_document.version
         );
 
         // self.opened_files
         //     .insert(file_path.into_owned(), OpenedFilesData::default());
         // let client = self.client.clone();
+
         self.spawn_with_snapshot(move |snap| {
             let ret = with_catch_unwind(
                 "on_did_open",
@@ -231,7 +233,7 @@ impl Server {
                 // (possibly `unsafe`) implementation of `RefUnwindSafe`, the compiler conservatively assumes it's not.
                 // This often happens when a crate author hasn't audited their type for unwind safety or hasn't added
                 // the `unsafe impl RefUnwindSafe for Uri {}` declaration.
-                AssertUnwindSafe(|| {
+                AssertUnwindSafe(move || {
                     let txt_bytes: &[u8] = params.text_document.text.as_bytes();
                     let txt_hash: u64 = gxhash64(txt_bytes, GXHASH_SEED);
                     tracing::debug!("notif::DidOpenTextDocument - txt_hash: {:#x}", txt_hash);
@@ -246,17 +248,17 @@ impl Server {
 
                     let relative_stripped_path = file_pathbuf
                         .strip_prefix(&snap.root_path)
-                        .with_context(|| format!("Failed to strip prefix for {}", file_pathbuf.display()))?;
+                        .with_context(|| format!("Failed to strip prefix for {}", &file_pathbuf.display()))?;
 
                     let blame_highlighting_parent_level = &snap.config.blame_highlighting_parent_level;
 
                     tracing::debug!(
                         "blame_highlighting_parent_level: {} - relative_stripped_path: {}",
                         &blame_highlighting_parent_level,
-                        relative_stripped_path.display()
+                        &relative_stripped_path.display()
                     );
 
-                    // Handle the Result returned by populate_history
+                    // // Handle the Result returned by populate_history
                     if let Err(err) =
                         snap.cache_state.populate_history(blame_highlighting_parent_level, relative_stripped_path)
                     {
@@ -281,7 +283,7 @@ impl Server {
                                 .map_or_else(|| "<no summary>".to_owned(), |s| Arc::strong_count(s).to_string())
                         );
                         tracing::debug!("Path           : {}", &relative_stripped_path.display());
-                        tracing::debug!("Revspec        : {}", blame_highlighting_parent_level);
+                        tracing::debug!("Revspec        : {}", &blame_highlighting_parent_level);
                         // &commit_id.short() VS commit_id.short()
                         tracing::debug!("Commit         : {}", &commit_id.short());
                         tracing::debug!(
@@ -321,7 +323,6 @@ impl Server {
     }
 
     #[allow(clippy::needless_pass_by_value)]
-    #[allow(clippy::unused_self)]
     fn on_did_change(&mut self, params: DidChangeTextDocumentParams) -> NotifyResult {
         let uri: &Uri = &params.text_document.uri;
         let file_path = uri.to_file_path().unwrap_or_default();
@@ -364,8 +365,6 @@ impl Server {
         ControlFlow::Continue(())
     }
 
-    #[allow(clippy::needless_pass_by_value)]
-    #[allow(clippy::unused_self)]
     #[tracing::instrument(skip_all)]
     fn on_did_change_configuration(&mut self, params: DidChangeConfigurationParams) -> NotifyResult {
         tracing_to_json_pretty!(&params, "notif::DidChangeConfiguration");
@@ -378,40 +377,34 @@ impl Server {
     #[tracing::instrument(skip_all)]
     fn spawn_reload_config(&self) {
         if self.capabilities.workspace_configuration {
-            tokio::spawn(
-                {
-                    let mut client = self.client.clone();
-                    async move {
-                        // info_span!("spawn_reload_config");
-                        match client
-                            .configuration(ConfigurationParams {
-                                items: vec![ConfigurationItem {
-                                    scope_uri: None,
-                                    section: Some(WORKSPACE_CONFIG_KEY.into()),
-                                }],
-                            })
-                            .await
-                        {
-                            Ok(mut v) => {
-                                let v = v.pop().unwrap_or_default();
-                                tracing::debug!("Updating config: {v:?}");
-                                let _: Result<_, _> = client.emit(UpdateConfigEvent(v));
-                            }
-                            Err(err) => {
-                                client.show_message_ext(
-                                    MessageType::ERROR,
-                                    format_args!("Failed to update config: {err:#}"),
-                                );
-                            }
+            tokio::spawn({
+                let mut client = self.client.clone();
+                async move {
+                    match client
+                        .configuration(ConfigurationParams {
+                            items: vec![ConfigurationItem {
+                                scope_uri: None,
+                                section: Some(WORKSPACE_CONFIG_KEY.into()),
+                            }],
+                        })
+                        .await
+                    {
+                        Ok(mut v) => {
+                            let v = v.pop().unwrap_or_default();
+                            tracing::debug!("Updating config: {v:?}");
+                            let _: Result<_, _> = client.emit(UpdateConfigEvent(v));
+                        }
+                        Err(err) => {
+                            client
+                                .show_message_ext(MessageType::ERROR, format_args!("Failed to update config: {err:#}"));
                         }
                     }
                 }
-                .in_current_span(),
-            );
+                .in_current_span()
+            });
         }
     }
 
-    #[allow(clippy::needless_pass_by_value)]
     #[tracing::instrument(skip_all)]
     fn on_update_config(&mut self, value: UpdateConfigEvent) -> NotifyResult {
         let mut config = Config::clone(&self.config);
@@ -432,6 +425,7 @@ impl Server {
         ControlFlow::Continue(())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn register_did_change_configuration(client: &mut ClientSocket) -> Result<()> {
         let settings_json_value = serde_json::to_value(WORKSPACE_CONFIG_KEY)
             .with_context(|| format!("Failed to serialize WORKSPACE_CONFIG_KEY ('{WORKSPACE_CONFIG_KEY}') to JSON",))?;
@@ -451,7 +445,6 @@ impl Server {
             }],
         };
 
-        // The existing error handling for register_capability can now also use `?`
         client.register_capability(params).await.context("Failed to register capability for DidChangeConfiguration")?;
 
         tracing::debug!("Registered DidChangeConfiguration");
@@ -572,7 +565,7 @@ impl Cancelled {
         std::panic::resume_unwind(Box::new(self));
     }
 
-    /// Runs `f`, and catches any salsa cancellation.
+    // Runs `f`, and catches any cancellation (e.g. from salsa).
     pub fn catch<F, T>(f: F) -> Result<T, Cancelled>
     where
         F: FnOnce() -> T + UnwindSafe,
