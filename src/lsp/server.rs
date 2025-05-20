@@ -26,7 +26,7 @@ use lsp_types::{
     },
 };
 use tokio::{task, task::JoinHandle};
-use tracing::Instrument;
+use tracing::{Instrument, Span};
 
 use crate::{
     diff_for_lsp,
@@ -212,8 +212,7 @@ impl Server {
         };
 
         tracing::debug!(
-            "notif::DidOpenTextDocument - params.text_document.uri: {} - params.text_document.language_id: {} -
-        params.text_document.version: {}",
+            "params.text_document.uri: {} - params.text_document.language_id: {} - params.text_document.version: {}",
             &file_pathbuf.display(),
             &params.text_document.language_id,
             &params.text_document.version
@@ -227,16 +226,18 @@ impl Server {
             let ret = with_catch_unwind(
                 "on_did_open",
                 // Use AssertUnwindSafe to allow catching panics in the closure because the compiler concludes that
-                // `lsp_types::Uri`, captured in the closure, is not `RefUnwindSafe` because it (via `fluent_uri::Uri`)
-                // contains an `UnsafeCell` for which `RefUnwindSafe` is not implemented. While `Cell<T>` (where `T` is
-                // `RefUnwindSafe`) *is* `RefUnwindSafe`, if the `fluent_uri::Uri` type itself doesn't have an explicit
-                // (possibly `unsafe`) implementation of `RefUnwindSafe`, the compiler conservatively assumes it's not.
-                // This often happens when a crate author hasn't audited their type for unwind safety or hasn't added
-                // the `unsafe impl RefUnwindSafe for Uri {}` declaration.
-                AssertUnwindSafe(move || {
+                // `lsp_types::Uri`, captured in the closure, is not `RefUnwindSafe` because it (via
+                // `fluent_uri::Uri`) contains an `UnsafeCell` for which `RefUnwindSafe` is not
+                // implemented. While `Cell<T>` (where `T` is `RefUnwindSafe`) *is*
+                // `RefUnwindSafe`, if the `fluent_uri::Uri` type itself doesn't have an explicit
+                // (possibly `unsafe`) implementation of `RefUnwindSafe`, the compiler conservatively assumes it's
+                // not. This often happens when a crate author hasn't audited their type for
+                // unwind safety or hasn't added the `unsafe impl RefUnwindSafe for Uri {}`
+                // declaration.
+                AssertUnwindSafe(|| {
                     let txt_bytes: &[u8] = params.text_document.text.as_bytes();
                     let txt_hash: u64 = gxhash64(txt_bytes, GXHASH_SEED);
-                    tracing::debug!("notif::DidOpenTextDocument - txt_hash: {:#x}", txt_hash);
+                    tracing::debug!("txt_hash: {:#x}", txt_hash);
 
                     snap.vfs.open(
                         params.text_document.uri.clone(),
@@ -244,7 +245,7 @@ impl Server {
                         &params.text_document.text,
                     );
                     // let txt = snap.vfs.get_text(uri).unwrap_or_default();
-                    // tracing::debug!("notif::DidOpenTextDocument - snap.vfs.get_text: {}", txt);
+                    // tracing::debug!("snap.vfs.get_text: {}", txt);
 
                     let relative_stripped_path = file_pathbuf
                         .strip_prefix(&snap.root_path)
@@ -367,7 +368,6 @@ impl Server {
 
     #[tracing::instrument(skip_all)]
     fn on_did_change_configuration(&mut self, params: DidChangeConfigurationParams) -> NotifyResult {
-        tracing_to_json_pretty!(&params, "notif::DidChangeConfiguration");
         tracing_to_json_pretty!(&params);
         self.spawn_reload_config();
 
@@ -427,25 +427,37 @@ impl Server {
 
     #[tracing::instrument(skip_all)]
     async fn register_did_change_configuration(client: &mut ClientSocket) -> Result<()> {
-        let settings_json_value = serde_json::to_value(WORKSPACE_CONFIG_KEY)
-            .with_context(|| format!("Failed to serialize WORKSPACE_CONFIG_KEY ('{WORKSPACE_CONFIG_KEY}') to JSON",))?;
+        // let settings_json_value = serde_json::to_value(WORKSPACE_CONFIG_KEY)
+        //     .with_context(|| format!("Failed to serialize WORKSPACE_CONFIG_KEY ('{WORKSPACE_CONFIG_KEY}') to
+        // JSON",))?;
 
-        let did_change_params_for_registration = DidChangeConfigurationParams {
-            settings: settings_json_value,
-        };
+        // let did_change_params_for_registration = DidChangeConfigurationParams {
+        //     settings: settings_json_value,
+        // };
 
-        let register_options_json_value = serde_json::to_value(&did_change_params_for_registration)
-            .context("Failed to serialize DidChangeConfigurationParams to JSON for registration options")?;
+        // let register_options_json_value = serde_json::to_value(&did_change_params_for_registration)
+        //     .context("Failed to serialize DidChangeConfigurationParams to JSON for registration options")?;
 
         let params = RegistrationParams {
             registrations: vec![Registration {
                 id: notif::DidChangeConfiguration::METHOD.into(),
                 method: notif::DidChangeConfiguration::METHOD.into(),
-                register_options: Some(register_options_json_value),
+                register_options: None,
+                // register_options: Some(register_options_json_value),
             }],
         };
 
-        client.register_capability(params).await.context("Failed to register capability for DidChangeConfiguration")?;
+        client
+            .register_capability(params)
+            .await
+            .context("Failed to register capability for receiving DidChangeConfiguration")?;
+
+        // if let Err(err) = client.register_capability(params).await {
+        //     client.show_message_ext(
+        //         MessageType::ERROR,
+        //         format!("Failed to register capability for receiving DidChangeConfiguration: {err:#}"),
+        //     );
+        // }
 
         tracing::debug!("Registered DidChangeConfiguration");
         Ok(())
@@ -464,7 +476,11 @@ impl Server {
             // root_path: PathBuf::from(&self.root_path),
             root_path: self.root_path.clone(),
         };
-        task::spawn_blocking(move || f(snap))
+        let span = Span::current();
+        task::spawn_blocking(move || {
+            let _enter = span.enter();
+            f(snap)
+        })
     }
 }
 
