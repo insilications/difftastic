@@ -232,13 +232,7 @@ fn commit_info() {
         return;
     }
 
-    let output = match Command::new("git")
-        .arg("log")
-        .arg("-1")
-        .arg("--date=short")
-        .arg("--format=%H %h %cd")
-        .output()
-    {
+    let output = match Command::new("git").arg("log").arg("-1").arg("--date=short").arg("--format=%H %h %cd").output() {
         Ok(output) if output.status.success() => output,
         _ => return,
     };

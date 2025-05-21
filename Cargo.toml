@@ -25,7 +25,7 @@ include = [
   "/vendored_parsers/*-src/**/*.h",
   "/vendored_parsers/highlights/*.scm",
 ]
-rust-version = "1.88.0"
+rust-version = "1.87.0"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/{ version }/difft-{ target }.{ archive-format }"
