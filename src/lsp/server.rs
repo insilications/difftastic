@@ -71,7 +71,6 @@ pub struct Server {
 }
 
 // TODO: review all usage of `.expect()` and `.unwrap()` in this file and convert them to proper error handling.
-
 impl Server {
     pub fn new_router(client: ClientSocket) -> Router<Self> {
         let this = Self::new(client);

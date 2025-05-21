@@ -83,5 +83,9 @@ tracing-subscriber = { version = "0.3.19", features = ["chrono", "fmt", "local-t
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
-[lints]
-workspace = true
+[lints.clippy]
+all = "warn"
+cargo          = "warn"
+nursery        = "warn"
+pedantic       = "warn"
+too_many_lines = { level = "allow", priority = 1 }

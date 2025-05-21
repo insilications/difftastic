@@ -235,7 +235,7 @@ anyhow = "1.0.98"
 async-io = "2.4.0"
 futures = { version = "0.3.31", default-features = false, features = ["async-await", "std"] }
 git2 = { version = "0.20.1", features = ["vendored-libgit2"] }
-gxhash = "3.5.0"
+gxhash = { version = "3.5.0", path = "/aot/stuff/dev/gxhash/" }
 lsp-types = { version = "0.97.0", features = ["proposed"] }
 macro_rules_attribute = "0.2.0"
 phf = { version = "0.11.3", features = ["macros"] }
@@ -292,11 +292,9 @@ tree-sitter-yaml = "0.7.0"
 unicode-segmentation = "1.12.0"
 waitpid-any = { version = "0.3.0" }
 
-[workspace.lints.clippy]
+[lints.clippy]
+all            = "warn"
 cargo          = "warn"
 nursery        = "warn"
 pedantic       = "warn"
 too_many_lines = { level = "allow", priority = 1 }
-
-[lints]
-workspace = true
