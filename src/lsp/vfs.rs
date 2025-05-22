@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use lsp_types::{Position, TextDocumentContentChangeEvent, Uri};
 use ropey::Rope;
 
@@ -65,13 +65,13 @@ impl Vfs {
     /// * `version` must be strictly newer than the stored version, otherwise the call is rejected with an error
     ///   (`Err`).
     pub fn apply_changes(&self, uri: &Uri, new_version: i32, changes: &[TextDocumentContentChangeEvent]) -> Result<()> {
-        let mut inner = self.0.write().unwrap();
+        let mut inner = self.0.write().expect("VfsInner lock poisoned");
         let doc = inner.docs.get_mut(uri).with_context(|| {
             format!("Document {} not found (did you forget didOpen?)", uri.to_file_path().unwrap_or_default().display())
         })?;
 
         // Prevent out-of-order edits.
-        if new_version <= doc.version {
+        if new_version <= (doc).version {
             bail!("Stale change: incoming version {new_version} <= stored version {}", doc.version);
         }
 
@@ -80,6 +80,7 @@ impl Vfs {
         }
 
         doc.version = new_version;
+        drop(inner);
         Ok(())
     }
 

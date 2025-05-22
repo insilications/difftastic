@@ -55,7 +55,7 @@ use mimalloc::MiMalloc;
 use options::{FilePermissions, USAGE};
 
 use crate::{
-    conflicts::{START_LHS_MARKER, apply_conflict_markers},
+    conflicts::{apply_conflict_markers, START_LHS_MARKER},
     diff::{changes::ChangeMap, dijkstra, dijkstra::ExceededGraphLimit, unchanged},
     display::{
         context::opposite_positions,
@@ -63,11 +63,11 @@ use crate::{
     },
     exit_codes::{EXIT_BAD_ARGUMENTS, EXIT_FOUND_CHANGES, EXIT_SUCCESS},
     files::{
-        ProbableFileKind, guess_content, read_file_lsp, read_file_or_die, read_files_or_die, read_or_die,
-        relative_paths_in_either,
+        guess_content, read_file_lsp, read_file_or_die, read_files_or_die, read_or_die, relative_paths_in_either,
+        ProbableFileKind,
     },
     parse::{
-        guess_language::{LANGUAGE_MAP_FROM_LSP, Language, LanguageOverride, guess, language_globs, language_name},
+        guess_language::{guess, language_globs, language_name, Language, LanguageOverride, LANGUAGE_MAP_FROM_LSP},
         syntax,
     },
 };
@@ -81,7 +81,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use std::{env, path::Path, process, thread};
 
-use humansize::{BINARY, FormatSizeOptions, format_size};
+use humansize::{format_size, FormatSizeOptions, BINARY};
 use owo_colors::OwoColorize;
 use rayon::prelude::*;
 use strum::IntoEnumIterator;

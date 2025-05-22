@@ -354,7 +354,7 @@ impl CacheStateShared {
         self.repo = Some(Arc::new(Mutex::new(repo)));
         Ok(())
     }
-    
+
     pub fn check_repo(&self) -> Result<()> {
         if self.repo.is_none() {
             return Err(anyhow::anyhow!("Repository is not set. Call set_repo first."));
@@ -404,6 +404,8 @@ impl CacheStateShared {
                 index += 1;
             }
             // Locks are automatically released when versions_guard and revs_guard go out of scope
+            drop(versions_guard);
+            drop(revs_guard);
         }
         Ok(())
     }
@@ -419,7 +421,8 @@ impl CacheStateShared {
         // returned by lookup is tied to the lifetime of the lock guard.
         // Returning the owned FileVersion avoids lifetime issues.
         lookup(&*versions_guard, &*revs_guard, path, revspec)
-            .map(|(commit_id, file_version_ref)| (commit_id, file_version_ref.clone())) // Clone FileVersion?? Maybe not needed
+            .map(|(commit_id, file_version_ref)| (commit_id, file_version_ref.clone())) // Clone FileVersion?? Maybe not
+                                                                                        // needed
     }
 
     /// Method to iterate - takes &self, uses read locks

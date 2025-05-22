@@ -4,7 +4,7 @@ use std::{
     cell::Cell,
     collections::HashMap,
     fmt,
-    future::{Future, ready},
+    future::{ready, Future},
     ops::ControlFlow,
     panic,
     panic::{AssertUnwindSafe, UnwindSafe},
@@ -12,18 +12,19 @@ use std::{
     sync::{Arc, Once},
 };
 
-use anyhow::{Context, Error, Result, bail};
-use async_lsp::{ClientSocket, ErrorCode, LanguageClient, ResponseError, router::Router};
+use anyhow::{bail, Context, Error, Result};
+use async_lsp::{router::Router, ClientSocket, ErrorCode, LanguageClient, ResponseError};
 use gxhash::gxhash64;
 use lsp_types::{
-    ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
-    InitializeResult, InitializedParams, MessageType, Registration, RegistrationParams, ServerInfo, ShowMessageParams,
-    Uri, notification as notif,
+    notification as notif,
     notification::Notification,
     request::{
         Request, {self as req},
     },
+    ConfigurationItem, ConfigurationParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, InitializeParams,
+    InitializeResult, InitializedParams, MessageType, Registration, RegistrationParams, ServerInfo, ShowMessageParams,
+    Uri,
 };
 use tokio::{task, task::JoinHandle};
 use tracing::{Instrument, Span};
@@ -32,12 +33,12 @@ use crate::{
     diff_for_lsp,
     display::json3::diffresult_to_ranges,
     lsp::{
-        GXHASH_SEED, LSP_SERVER_NAME, LSP_SERVER_VERSION, cache_git,
-        capabilities::{NegotiatedCapabilities, negotiate_capabilities},
+        cache_git,
+        capabilities::{negotiate_capabilities, NegotiatedCapabilities},
         config::{Config, WORKSPACE_CONFIG_KEY},
         lsp_ext,
         uri_ext::UriExt,
-        vfs,
+        vfs, GXHASH_SEED, LSP_SERVER_NAME, LSP_SERVER_VERSION,
     },
     tracing_to_json, tracing_to_json_pretty,
 };
@@ -66,7 +67,7 @@ pub struct Server {
     cache_state: cache_git::CacheStateShared,
     root_path: PathBuf,
     capabilities: NegotiatedCapabilities,
-    opened_files: HashMap<PathBuf, OpenedFilesData>,
+    opened_files: HashMap<Uri, OpenedFilesData>,
     vfs: vfs::Vfs,
 }
 
@@ -200,43 +201,24 @@ impl Server {
         ControlFlow::Continue(())
     }
 
-    //     let file_pathbuf = match uri.to_file_path() {
-    //     Some(std::borrow::Cow::Owned(p))    => p,
-    //     Some(std::borrow::Cow::Borrowed(p)) => std::path::PathBuf::from(p),
-    //     None => {
-    //         tracing::error!("Failed to convert URI to file path: {uri:?}");
-    //         return ControlFlow::Continue(());
-    //     }
-    // };
-
     #[tracing::instrument(skip_all)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
         let uri: &Uri = &params.text_document.uri;
-        // let file_pathbuf = if let Some(cow_path) = uri.to_file_path() {
-        //     cow_path.into_owned()
-        // } else {
-        //     tracing::error!("Failed to convert URI to file path: {:?}", &uri);
-        //     return ControlFlow::Continue(()); // Return early from on_did_open
-        // };
-        let file_pathbuf = match uri.to_file_path() {
-            Some(std::borrow::Cow::Owned(p)) => p,
-            Some(std::borrow::Cow::Borrowed(p)) => std::path::PathBuf::from(p),
-            None => {
-                tracing::error!("Failed to convert URI to file path: {uri:?}");
-                return ControlFlow::Continue(());
-            }
+        let file_pathbuf = if let Some(cow_path) = uri.to_file_path() {
+            cow_path.into_owned()
+        } else {
+            tracing::error!("Failed to convert URI to file path: {:?}", *uri);
+            return ControlFlow::Continue(()); // Return early from on_did_open
         };
 
         tracing::debug!(
-            "params.text_document.uri: {} - params.text_document.language_id: {} - params.text_document.version: {}",
+            "notif::DidOpenTextDocument - params.text_document.uri: {} - params.text_document.language_id: {} - params.text_document.version: {}",
             &file_pathbuf.display(),
             &params.text_document.language_id,
             &params.text_document.version
         );
 
-        // self.opened_files
-        //     .insert(file_path.into_owned(), OpenedFilesData::default());
-        // let client = self.client.clone();
+        self.opened_files.insert(uri.clone(), OpenedFilesData::default());
 
         self.spawn_with_snapshot(move |snap| {
             let ret = with_catch_unwind(
@@ -333,8 +315,12 @@ impl Server {
     fn on_did_close(&mut self, params: DidCloseTextDocumentParams) -> NotifyResult {
         tracing::debug!(
             "notif::DidCloseTextDocument - params.text_document.uri: {}",
-            params.text_document.uri.to_file_path().unwrap_or_default().display()
+            &params.text_document.uri.to_file_path().unwrap_or_default().display()
         );
+
+        self.opened_files.remove(&params.text_document.uri);
+
+        // Must clear all highlights for the file by sending a notification to the client.
 
         ControlFlow::Continue(())
     }
@@ -714,3 +700,41 @@ pub fn on_did_open_custom(
         )))
     }
 }
+
+// #[tracing::instrument]
+// fn my_function() {
+//     let t = "Hello, world!";
+//     spawn(move || {
+//         println!("Function executed: {t}");
+//     });
+// }
+
+// fn spawn(f: impl FnOnce()) {
+//     f();
+// }
+
+// pub struct MyStruck {
+//     uri: String,
+//     porra: String,
+// }
+
+// fn spawn(f: impl FnOnce()) {
+//     f();
+// }
+
+// fn main() {
+//     let mut my_struck = MyStruck {
+//         uri: "uri".into(),
+//         porra: "PORRA".into(),
+//     };
+//     let mut uri1: &mut str = &mut (my_struck.uri);
+
+//     println!("uri1: {}", uri1);
+//     my_struck.porra.push('d');
+//     my_struck.uri.push('d');
+//     println!("my_struck.uri: {}", my_struck.uri);
+
+//     spawn(move || {
+//         println!("my_struck.porra: {}", my_struck.porra);
+//     });
+// }
