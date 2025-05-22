@@ -200,14 +200,31 @@ impl Server {
         ControlFlow::Continue(())
     }
 
+    //     let file_pathbuf = match uri.to_file_path() {
+    //     Some(std::borrow::Cow::Owned(p))    => p,
+    //     Some(std::borrow::Cow::Borrowed(p)) => std::path::PathBuf::from(p),
+    //     None => {
+    //         tracing::error!("Failed to convert URI to file path: {uri:?}");
+    //         return ControlFlow::Continue(());
+    //     }
+    // };
+
     #[tracing::instrument(skip_all)]
     fn on_did_open(&mut self, params: DidOpenTextDocumentParams) -> NotifyResult {
         let uri: &Uri = &params.text_document.uri;
-        let file_pathbuf = if let Some(cow_path) = uri.to_file_path() {
-            cow_path.into_owned()
-        } else {
-            tracing::error!("Failed to convert URI to file path: {:?}", &uri);
-            return ControlFlow::Continue(()); // Return early from on_did_open
+        // let file_pathbuf = if let Some(cow_path) = uri.to_file_path() {
+        //     cow_path.into_owned()
+        // } else {
+        //     tracing::error!("Failed to convert URI to file path: {:?}", &uri);
+        //     return ControlFlow::Continue(()); // Return early from on_did_open
+        // };
+        let file_pathbuf = match uri.to_file_path() {
+            Some(std::borrow::Cow::Owned(p)) => p,
+            Some(std::borrow::Cow::Borrowed(p)) => std::path::PathBuf::from(p),
+            None => {
+                tracing::error!("Failed to convert URI to file path: {uri:?}");
+                return ControlFlow::Continue(());
+            }
         };
 
         tracing::debug!(
