@@ -237,11 +237,8 @@ impl Server {
                     let txt_hash: u64 = gxhash64(txt_bytes, GXHASH_SEED);
                     tracing::debug!("txt_hash: {:#x}", txt_hash);
 
-                    snap.vfs.open(
-                        params.text_document.uri.clone(),
-                        params.text_document.version,
-                        &params.text_document.text,
-                    );
+                    snap.vfs.open(params.text_document.uri, params.text_document.version, &params.text_document.text);
+
                     // let txt = snap.vfs.get_text(uri).unwrap_or_default();
                     // tracing::debug!("snap.vfs.get_text: {}", txt);
 
@@ -249,7 +246,7 @@ impl Server {
                         .strip_prefix(&snap.root_path)
                         .with_context(|| format!("Failed to strip prefix for {}", &file_pathbuf.display()))?;
 
-                    let blame_highlighting_parent_level = &snap.config.blame_highlighting_parent_level;
+                    let blame_highlighting_parent_level: &str = &snap.config.blame_highlighting_parent_level;
 
                     tracing::debug!(
                         "blame_highlighting_parent_level: {} - relative_stripped_path: {}",

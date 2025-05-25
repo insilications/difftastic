@@ -52,8 +52,7 @@ impl Vfs {
     // ───────────────────────────────────────────────────────────────
     /// Insert or replace a document that was just opened.
     pub fn open(&self, uri: Uri, version: i32, text: &str) {
-        let mut inner = self.0.write().unwrap();
-        inner.docs.insert(uri, Document::new(version, text));
+        self.0.write().expect("VfsInner lock poisoned").docs.insert(uri, Document::new(version, text));
     }
 
     // ───────────────────────────────────────────────────────────────

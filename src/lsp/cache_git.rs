@@ -254,8 +254,8 @@ fn put_version(
     path: PathBuf,
     commit: CommitId,
     revspec: RevSpec,
-    content: &Arc<str>,
-    content_hash: &u64,
+    content: Arc<str>,
+    content_hash: u64,
     maybe_summary: Option<&Arc<str>>,
 ) {
     // 1) Create one shared PathBuf
@@ -268,11 +268,9 @@ fn put_version(
             path: Arc::clone(&path_arc),
         },
         FileVersion {
-            // Just clone the Arcs – no re-allocation
-            content: Arc::clone(content),
-            content_hash: *content_hash,
+            content,
+            content_hash,
             maybe_summary: maybe_summary.cloned(),
-            // maybe_summary: maybe_summary.as_ref().map(Arc::clone),
         },
     );
 
@@ -397,13 +395,14 @@ impl CacheStateShared {
                     path.to_path_buf(),
                     commit,
                     revspec,
-                    &content_arc,
-                    &content_hash,
+                    content_arc,
+                    content_hash,
                     maybe_summary.as_ref(),
                 );
                 index += 1;
             }
-            // Locks are automatically released when versions_guard and revs_guard go out of scope
+            // Locks are automatically released when versions_guard and revs_guard go out of scope, but I am explictly
+            // dropping them here because clippy complains about the locks being held for too long.
             drop(versions_guard);
             drop(revs_guard);
         }
