@@ -7,3 +7,6 @@ flamegraph.svg
 sample_files/compare.result
 
 notes.md
+.aider*
+
+.docs-cache/

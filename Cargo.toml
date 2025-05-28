@@ -90,7 +90,6 @@ debug = 1
 
 [dependencies]
 async-lsp = { version = "0.2.2", features = [
-  "async-io",
   "client-monitor",
   "omni-trait",
   "stdio",
@@ -232,7 +231,7 @@ tree-sitter          = "0.24.0"
 tree-sitter-language = "0.1.3"
 # tree-sitter parsers that are available on crates.io.
 anyhow = "1.0.98"
-async-io = "2.4.0"
+async-io = "2.4.1"
 futures = { version = "0.3.31", default-features = false, features = ["async-await", "std"] }
 git2 = { version = "0.20.1", features = ["vendored-libgit2"] }
 gxhash = { version = "3.5.0", path = "/aot/stuff/dev/gxhash/" }

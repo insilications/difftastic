@@ -233,15 +233,6 @@ impl Server {
                 // unwind safety or hasn't added the `unsafe impl RefUnwindSafe for Uri {}`
                 // declaration.
                 AssertUnwindSafe(|| {
-                    let txt_bytes: &[u8] = params.text_document.text.as_bytes();
-                    let txt_hash: u64 = gxhash64(txt_bytes, GXHASH_SEED);
-                    tracing::debug!("txt_hash: {:#x}", txt_hash);
-
-                    snap.vfs.open(params.text_document.uri, params.text_document.version, &params.text_document.text);
-
-                    // let txt = snap.vfs.get_text(uri).unwrap_or_default();
-                    // tracing::debug!("snap.vfs.get_text: {}", txt);
-
                     let relative_stripped_path = file_pathbuf
                         .strip_prefix(&snap.root_path)
                         .with_context(|| format!("Failed to strip prefix for {}", &file_pathbuf.display()))?;
@@ -254,16 +245,46 @@ impl Server {
                         &relative_stripped_path.display()
                     );
 
-                    // // Handle the Result returned by populate_history
-                    if let Err(err) =
-                        snap.cache_state.populate_history(blame_highlighting_parent_level, relative_stripped_path)
-                    {
-                        tracing::error!("Failed to populate history: {err}");
-                        return Err(Error::new(ResponseError::new(
-                            ErrorCode::REQUEST_FAILED,
-                            format!("Failed to populate history: {err}"),
-                        )));
+                    // Handle the Result returned by populate_history
+                    match snap.cache_state.populate_history(blame_highlighting_parent_level, relative_stripped_path) {
+                        Ok(cache_git::PopulateHistoryResult::AlreadyPopulated) => {
+                            tracing::debug!(
+                                "History already populated for path: {} with revspec: {}",
+                                relative_stripped_path.display(),
+                                blame_highlighting_parent_level
+                            );
+                        }
+                        Ok(cache_git::PopulateHistoryResult::NewlyPopulated) => {
+                            tracing::debug!(
+                                "History newly populated for path: {} with revspec: {}",
+                                relative_stripped_path.display(),
+                                blame_highlighting_parent_level
+                            );
+                        }
+                        Ok(cache_git::PopulateHistoryResult::NoHistory) => {
+                            tracing::debug!(
+                                "No history to populate for path: {} with revspec: {}",
+                                relative_stripped_path.display(),
+                                blame_highlighting_parent_level
+                            );
+                        }
+                        Err(err) => {
+                            tracing::error!("Failed to populate history: {err}");
+                            return Err(Error::new(ResponseError::new(
+                                ErrorCode::REQUEST_FAILED,
+                                format!("Failed to populate history: {err}"),
+                            )));
+                        }
                     }
+
+                    let txt_bytes: &[u8] = params.text_document.text.as_bytes();
+                    let txt_hash: u64 = gxhash64(txt_bytes, GXHASH_SEED);
+                    tracing::debug!("txt_hash: {:#x}", txt_hash);
+
+                    snap.vfs.open(params.text_document.uri, params.text_document.version, &params.text_document.text);
+
+                    // let txt = snap.vfs.get_text(uri).unwrap_or_default();
+                    // tracing::debug!("snap.vfs.get_text: {}", txt);
 
                     // Note: lookup_version now returns an owned FileVersion due to cloning
                     if let Some((commit_id, version)) =

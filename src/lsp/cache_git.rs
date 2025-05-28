@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fmt,
-    fmt::Write,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLock},
 };
@@ -380,6 +379,20 @@ fn iterate_lookup(versions: &VersionStore, revs: &RevStore, path: &Path) {
     }
 }
 
+/// Result of populating the history for a file path in `RevStore`.
+/// This is returned by `CacheStateShared::populate_history`.
+/// It indicates the state of the history after attempting to populate it.
+/// The result can be one of the following:
+/// - `AlreadyPopulated`: The history for the specified path and revspec was already populated.
+/// - `NewlyPopulated`: The history was successfully populated for the first time.
+/// - `NoHistory`: There was no history to populate, meaning the specified path had no commits or revisions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PopulateHistoryResult {
+    AlreadyPopulated,
+    NewlyPopulated,
+    NoHistory, // When history is empty
+}
+
 #[derive(Clone)]
 pub struct CacheStateShared {
     repo: Option<SharedRepo>, // `SharedRepo` = `Arc<Mutex<Repository>>`. `Repository` is `Send`, but not `Sync`.
@@ -411,16 +424,39 @@ impl CacheStateShared {
     }
 
     // Method to populate - takes &self because mutation happens *inside* the locks
-    pub fn populate_history(&self, revspec: &str, path: &Path) -> Result<()> {
+    pub fn populate_history(&self, revspec: &str, path: &Path) -> Result<PopulateHistoryResult> {
+        {
+            let revs_read_guard = self.revs.read().expect("Rev store read lock poisoned");
+            let path_buf = path.to_path_buf();
+            if revs_read_guard.contains_key(&path_buf) {
+                // Optionally, check if the specific revspec exists
+                if let Some(rev_index) = revs_read_guard.get(&path_buf) {
+                    if rev_index.contains_key(revspec) {
+                        tracing::debug!(
+                            "History already populated for path: {} with revspec: {}",
+                            path.display(),
+                            revspec
+                        );
+                        return Ok(PopulateHistoryResult::AlreadyPopulated);
+                    }
+                }
+            }
+        }
+
         // Check if self.repo is set
         let history = {
             let repo_guard = self.repo.as_ref().unwrap().lock().expect("Repo mutex poisoned");
-            commits_touching_path(&*repo_guard, revspec, path)?
+            commits_touching_path(&repo_guard, revspec, path)?
         }; // ← repo_guard lock released right here
-        {
-            // Maybe use .write().map_err(...) for better error handling.
-            let mut versions_guard = self.versions.write().expect("Version store lock poisoned");
-            let mut revs_guard = self.revs.write().expect("Rev store lock poisoned");
+
+        tracing::debug!("history.is_empty(): {}", history.is_empty());
+        if history.is_empty() {
+            tracing::debug!("No history found for path: {} with revspec: {}", path.display(), revspec);
+            // No history to populate
+            Ok(PopulateHistoryResult::NoHistory)
+        } else {
+            let mut versions_guard = self.versions.write().expect("Version store write lock poisoned");
+            let mut revs_guard = self.revs.write().expect("Rev store write lock poisoned");
 
             let mut index = 1;
             for (maybe_summary, oid, maybe_content) in history {
@@ -438,8 +474,8 @@ impl CacheStateShared {
 
                 // Pass mutable references obtained from the lock guards
                 put_version(
-                    &mut *versions_guard, // Dereference the guard
-                    &mut *revs_guard,     // Dereference the guard
+                    &mut versions_guard, // Dereference the guard
+                    &mut revs_guard,     // Dereference the guard
                     path.to_path_buf(),
                     commit,
                     revspec,
@@ -449,19 +485,17 @@ impl CacheStateShared {
                 );
                 index += 1;
             }
-            // Locks are automatically released when versions_guard and revs_guard go out of scope, but I am explictly
-            // dropping them here because clippy complains about the locks being held for too long.
-            drop(versions_guard);
             drop(revs_guard);
+            drop(versions_guard);
+            Ok(PopulateHistoryResult::NewlyPopulated)
         }
-        Ok(())
     }
 
     // Method to lookup - takes &self, uses read locks
     pub fn lookup_version(&self, path: &Path, revspec: &str) -> Option<(CommitId, FileVersion)> {
         // Acquire read locks - multiple readers can coexist
-        let versions_guard = self.versions.read().expect("Version store lock poisoned");
-        let revs_guard = self.revs.read().expect("Rev store lock poisoned");
+        let versions_guard = self.versions.read().expect("Version store read lock poisoned");
+        let revs_guard = self.revs.read().expect("Rev store read lock poisoned");
 
         // Call the standalone lookup function with immutable references from guards
         // We need to clone the FileVersion because the reference (&'a FileVersion)
@@ -475,8 +509,8 @@ impl CacheStateShared {
     /// Method to iterate - takes &self, uses read locks
     #[allow(dead_code)]
     pub fn iterate_path_versions(&self, path: &Path) {
-        let versions_guard = self.versions.read().expect("Version store lock poisoned");
-        let revs_guard = self.revs.read().expect("Rev store lock poisoned");
+        let versions_guard = self.versions.read().expect("Version store read lock poisoned");
+        let revs_guard = self.revs.read().expect("Rev store read lock poisoned");
         // Note: iterate_lookup prints directly, so it doesn't return references
         // tied to the lock guard's lifetime, which is fine here.
         iterate_lookup(&*versions_guard, &*revs_guard, path);
