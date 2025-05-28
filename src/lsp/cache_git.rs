@@ -84,6 +84,7 @@ fn commits_touching_path(
 // ────────────────────────────────────────────────────────────────────────────────
 
 /// A strongly-typed git commit object id (20 raw bytes).
+#[repr(transparent)] // guarantees same layout as the byte array
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CommitId([u8; 20]);
 
@@ -93,66 +94,115 @@ impl CommitId {
     /// Raw byte length of a SHA-1 hash.
     const RAW_LEN: usize = 20;
 
-    // 40
-
     /// Create a `CommitId` from its 40-character hexadecimal representation.
-    ///
-    /// Returns `Err(String)` that explains *why* the string is rejected:
-    ///   • wrong length,
-    ///   • non-ASCII byte,
-    ///   • or the exact position of a non-hex digit.
+    #[inline(always)]
     pub fn from_hex(hex: &str) -> Result<Self, String> {
+        // 1. Length check (fast fail, no allocation)
         if hex.len() != Self::HEX_LEN {
             return Err(format!("expected {} hexadecimal characters, got {}", Self::HEX_LEN, hex.len()));
         }
-        if !hex.is_ascii() {
-            return Err("input contains non-ASCII characters".into());
-        }
 
+        // 2. Decode 40 ASCII bytes → 20 raw bytes, two nibbles at a time
         let mut bytes = [0u8; Self::RAW_LEN];
 
         for (i, chunk) in hex.as_bytes().chunks_exact(2).enumerate() {
-            let hi_char = chunk[0] as char;
-            let lo_char = chunk[1] as char;
-            let hi = hi_char
-                .to_digit(16)
-                .ok_or_else(|| format!("invalid hex digit '{}' at byte index {}", hi_char, i * 2))?;
-            let lo = lo_char
-                .to_digit(16)
-                .ok_or_else(|| format!("invalid hex digit '{}' at byte index {}", lo_char, i * 2 + 1))?;
-            bytes[i] = ((hi << 4) | lo) as u8;
+            // SAFETY: `chunks_exact(2)` guarantees `chunk` has length 2
+            let hi = decode_nibble(chunk[0], i * 2)?; // high-order nibble
+            let lo = decode_nibble(chunk[1], i * 2 + 1)?; // low-order nibble
+            bytes[i] = (hi << 4) | lo;
         }
 
         Ok(Self(bytes))
     }
 
-    /// Traditional 7-character short form (useful for logs).
+    /// 7-char “short” form without first encoding the full string.
     #[allow(dead_code)]
+    #[inline(always)]
     pub fn short(&self) -> String {
-        let mut s = String::with_capacity(Self::HEX_LEN);
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut buf = [0u8; 7];
 
-        for b in &self.0 {
-            write!(s, "{b:02x}").unwrap();
-        }
-        s.truncate(7);
-        s
+        let [b0, b1, b2, b3, ..] = self.0;
+
+        buf[0] = HEX[(b0 >> 4) as usize];
+        buf[1] = HEX[(b0 & 0x0f) as usize];
+        buf[2] = HEX[(b1 >> 4) as usize];
+        buf[3] = HEX[(b1 & 0x0f) as usize];
+        buf[4] = HEX[(b2 >> 4) as usize];
+        buf[5] = HEX[(b2 & 0x0f) as usize];
+        buf[6] = HEX[(b3 >> 4) as usize];
+
+        // SAFETY: buf contains only valid ASCII bytes.
+        unsafe { String::from_utf8_unchecked(buf.to_vec()) }
     }
 
-    /// Full 40-character hexadecimal representation.
+    /// Full 40-character hex representation.
     #[allow(dead_code)]
+    #[inline(always)]
     pub fn long(&self) -> String {
-        let mut s = String::with_capacity(Self::HEX_LEN);
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut buf = [0u8; Self::HEX_LEN];
 
-        for b in &self.0 {
-            write!(s, "{b:02x}").unwrap();
+        for (i, byte) in self.0.iter().enumerate() {
+            buf[2 * i] = HEX[(byte >> 4) as usize];
+            buf[2 * i + 1] = HEX[(byte & 0x0f) as usize];
         }
-        s
+        unsafe { String::from_utf8_unchecked(buf.to_vec()) }
+    }
+
+    /// Construct directly from raw bytes (no parsing, `const fn` possible).
+    pub const fn from_bytes(bytes: [u8; 20]) -> Self {
+        Self(bytes)
+    }
+
+    /// Expose the underlying bytes (e.g. hashing, lookups) without copies.
+    pub const fn as_bytes(&self) -> &[u8; 20] {
+        &self.0
+    }
+}
+
+impl From<[u8; 20]> for CommitId {
+    #[inline(always)]
+    fn from(bytes: [u8; 20]) -> Self {
+        Self(bytes)
+    }
+}
+
+impl AsRef<[u8]> for CommitId {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::LowerHex for CommitId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f) // same as above
+    }
+}
+
+#[inline(always)]
+fn decode_nibble(b: u8, idx: usize) -> Result<u8, String> {
+    match b {
+        b'0'..=b'9' => Ok(b - b'0'),
+        b'a'..=b'f' => Ok(10 + b - b'a'),
+        b'A'..=b'F' => Ok(10 + b - b'A'),
+        _ => Err(format!("invalid hex digit '{}' at byte index {}", b as char, idx)),
     }
 }
 
 impl fmt::Display for CommitId {
+    #[inline(always)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.long())
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut buf = [0u8; Self::HEX_LEN];
+
+        for (i, byte) in self.0.iter().enumerate() {
+            buf[2 * i] = HEX[(byte >> 4) as usize];
+            buf[2 * i + 1] = HEX[(byte & 0x0f) as usize];
+        }
+        // SAFETY: `buf` contains only valid ASCII bytes.
+        f.write_str(unsafe { std::str::from_utf8_unchecked(&buf) })
     }
 }
 
@@ -385,8 +435,6 @@ impl CacheStateShared {
                     }
                     None => (Arc::<str>::from(""), 0),
                 };
-
-                // let summary_arc = Arc::<str>::from(summary_str);
 
                 // Pass mutable references obtained from the lock guards
                 put_version(
