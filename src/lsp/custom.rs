@@ -4,13 +4,12 @@ use async_lsp::{
     concurrency::ConcurrencyLayer,
     panic::CatchUnwindLayer,
     server::LifecycleLayer,
-    stdio::{PipeStdin, PipeStdout},
     // tracing::TracingLayer,
 };
 use tower::ServiceBuilder;
 use tracing::Level;
 
-use crate::lsp::{CHRONO_LOCAL, logging, server::Server};
+use crate::lsp::{logging, server::Server, CHRONO_LOCAL};
 //  The file length limit. Files larger than this will be rejected from all interactions.
 //  The hard limit is `u32::MAX` due to following conditions.
 //  - The parser and the `rowan` library uses `u32` based indices.
@@ -68,11 +67,15 @@ pub async fn run_lsp_server_stdio() -> Result<()> {
     };
     tracing::debug!("Max concurrent requests: {concurrency}");
 
+    // let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
+    // let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
+
     // Prefer truly asynchronous piped stdin/stdout without blocking tasks.
     #[cfg(unix)]
-    let stdin = PipeStdin::lock_tokio().context("stdin is not pipe-like")?;
-    let stdout = PipeStdout::lock_tokio().context("stdout is not pipe-like")?;
-
+    let (stdin, stdout) = (
+        async_lsp::stdio::PipeStdin::lock_tokio().context("stdin is not pipe-like")?,
+        async_lsp::stdio::PipeStdout::lock_tokio().context("stdout is not pipe-like")?,
+    );
     // Fallback to spawn blocking read/write otherwise.
     #[cfg(not(unix))]
     let (stdin, stdout) = (
@@ -92,6 +95,5 @@ pub async fn run_lsp_server_stdio() -> Result<()> {
     });
 
     // logging::setup_default_subscriber(client);
-
     Ok(server_main_loop.run_buffered(stdin, stdout).await?)
 }

@@ -719,6 +719,21 @@ pub fn on_did_open_custom(
     }
 }
 
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[tracing::instrument]
+fn test1() {
+    let _a = add(5, 6);
+    let _b: Vec<_> = [1, 2, 3].iter().map(|item| item).map(|item| item).map(|item| item).collect();
+}
+
+fn test2() {
+    let _a = add(5, 6);
+    let _b: Vec<_> = [1, 2, 3].iter().map(|item| item).map(|item| item).map(|item| item).collect();
+}
+
 // #[tracing::instrument]
 // fn my_function() {
 //     let t = "Hello, world!";

@@ -6,8 +6,6 @@ use std::{
     str::FromStr,
 };
 
-use lsp_types::Uri;
-
 /// On Windows, rewrites the wide path prefix `\\?\C:` to `C:`  
 /// Source: https://stackoverflow.com/a/70970317
 #[inline]
@@ -67,30 +65,17 @@ pub trait UriExt: Sized + sealed::Sealed {
 impl sealed::Sealed for lsp_types::Uri {}
 
 impl UriExt for lsp_types::Uri {
-    fn to_file_path(&self) -> Option<Cow<Path>> {
+    #[cfg(not(windows))]
+    fn to_file_path(&'_ self) -> Option<Cow<'_, Path>> {
         let path = match self.path().as_estr().decode().into_string_lossy() {
             Cow::Borrowed(ref_) => Cow::Borrowed(Path::new(ref_)),
             Cow::Owned(owned) => Cow::Owned(PathBuf::from(owned)),
         };
 
-        if cfg!(windows) {
-            let authority = self.authority().expect("url has no authority component");
-            let host = authority.host().as_str();
-            if host.is_empty() {
-                // very high chance this is a `file:///` uri
-                // in which case the path will include a leading slash we need to remove
-                let host = path.to_string_lossy();
-                let host = &host[1..];
-                return Some(Cow::Owned(PathBuf::from(host)));
-            }
-
-            let host = format!("{host}:");
-            Some(Cow::Owned(Path::new(&host).components().chain(path.components()).collect()))
-        } else {
-            Some(path)
-        }
+        Some(path)
     }
 
+    #[cfg(not(windows))]
     fn from_file_path<A: AsRef<Path>>(path: A) -> Option<Self> {
         let path = path.as_ref();
 
@@ -103,13 +88,48 @@ impl UriExt for lsp_types::Uri {
             }
         };
 
-        let raw_uri = if cfg!(windows) {
-            // we want to parse a triple-slash path for Windows paths
-            // it's a shorthand for `file://localhost/C:/Windows` with the `localhost` omitted
-            format!("file:///{}", fragment.to_string_lossy().replace("\\", "/"))
-        } else {
-            format!("file://{}", fragment.to_string_lossy())
+        let raw_uri = format!("file://{}", fragment.to_string_lossy());
+
+        Self::from_str(&raw_uri).ok()
+    }
+
+    #[cfg(windows)]
+    fn to_file_path(&'_ self) -> Option<Cow<'_, Path>> {
+        let path = match self.path().as_estr().decode().into_string_lossy() {
+            Cow::Borrowed(ref_) => Cow::Borrowed(Path::new(ref_)),
+            Cow::Owned(owned) => Cow::Owned(PathBuf::from(owned)),
         };
+
+        let authority = self.authority().expect("url has no authority component");
+        let host = authority.host().as_str();
+        if host.is_empty() {
+            // very high chance this is a `file:///` uri
+            // in which case the path will include a leading slash we need to remove
+            let host = path.to_string_lossy();
+            let host = &host[1..];
+            return Some(Cow::Owned(PathBuf::from(host)));
+        }
+
+        let host = format!("{host}:");
+        Some(Cow::Owned(Path::new(&host).components().chain(path.components()).collect()))
+    }
+
+    #[cfg(windows)]
+    fn from_file_path<A: AsRef<Path>>(path: A) -> Option<Self> {
+        let path = path.as_ref();
+
+        let fragment = if path.is_absolute() {
+            Cow::Borrowed(path)
+        } else {
+            match strict_canonicalize(path) {
+                Ok(path) => Cow::Owned(path),
+                Err(_) => return None,
+            }
+        };
+
+        // we want to parse a triple-slash path for Windows paths
+        // it's a shorthand for `file://localhost/C:/Windows` with the `localhost` omitted
+        let raw_uri = format!("file:///{}", fragment.to_string_lossy().replace("\\", "/"));
 
         Uri::from_str(&raw_uri).ok()
     }
