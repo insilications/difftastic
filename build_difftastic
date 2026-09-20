@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+rust_sysroot="$(rustc +nightly --print sysroot)"
+rust_llvm_bin="${rust_sysroot}/lib/rustlib/x86_64-unknown-linux-gnu/bin"
+rust_lld="${rust_llvm_bin}/gcc-ld/ld.lld"
+export CC=clang
+export CXX=clang++
+export AR="${rust_llvm_bin}/llvm-ar"
+export NM="${rust_llvm_bin}/llvm-nm"
+export PATH="${rust_llvm_bin}:${PATH}"
+unset CFLAGS
+unset ASMFLAGS
+unset FCFLAGS
+unset FFLAGS
+unset ASFLAGS
+unset LDFLAGS
+unset CXXFLAGS
+
+export CFLAGS="-flto=thin -fomit-frame-pointer -Wl,--disable-new-dtags -Wno-unknown-pragmas -D__MNO_VZEROUPPER__ -U_FORTIFY_SOURCE -Wl,-mllvm,-x86-relax-relocations=1 -Wa,-mrelax-relocations=yes -Wno-error -Wno-unused-command-line-argument -fno-sanitize-coverage=edge,trace-cmp,indirect-calls,8bit-counters,trace-pc-guard -mllvm=-x86-use-vzeroupper=0 -mllvm=-align-all-functions=5 -pthread -O3 -Wall -Wl,--as-needed -Wl,--build-id=sha1 -Wl,--gc-sections -Wl,--mllvm=-align-all-functions=5 -Wl,-Bsymbolic-functions -Wl,-O3 -Wl,-mllvm,-x86-use-vzeroupper=0 -Wl,-plugin-opt=O3 -Wl,-sort-common -Wl,-z,now,-z,relro,-z,max-page-size=0x4000,-z,separate-code -Wp,-D_REENTRANT -Wp,-U_FORTIFY_SOURCE -falign-functions=32 -fasynchronous-unwind-tables -fcf-protection=none -fexceptions -ffunction-sections -finline-functions -fno-common -fno-direct-access-external-data -fno-plt -fno-sanitize=all -fno-semantic-interposition -fno-stack-protector -ftree-slp-vectorize -ftree-vectorize -funroll-loops -funwind-tables -fuse-ld=lld --ld-path=${rust_lld} -lpthread -mf16c -mfma -mharden-sls=none -mno-vzeroupper -mprefer-vector-width=256 -msse3 -msse4.1 -msse4.2 -mssse3 -m64 -march=native -mtune=native -pipe -pthread -msse2 -mavx -mavx2 -maes -DNDEBUG"
+
+export ASMFLAGS="${CFLAGS}"
+export FCFLAGS="${CFLAGS}"
+export FFLAGS="${CFLAGS}"
+export LDFLAGS="${CFLAGS}"
+export CXXFLAGS="-fvisibility-inlines-hidden ${CFLAGS}"
+
+export RUSTFLAGS='-Zunstable-options -Clinker-features=+lld -Clink-self-contained=+linker -Clinker=clang -Clink-arg=-fuse-ld=lld -Clink-arg=-flto=thin -Clinker-plugin-lto=true -Cembed-bitcode=yes -Ccodegen-units=4 -Clto=thin -Cforce-frame-pointers=off -Zunstable-options -Zdylib-lto=true -Cdebug-assertions=false -Zplt=no -Zrelax-elf-relocations=on -Crelro-level=full -Ctarget-cpu=native -Ztune-cpu=native -Ctarget-feature=+aes,+sse2,+avx2,+prefer-256-bit,-vzeroupper -Cunsafe-allow-abi-mismatch=llvm-target-feature -Zllvm-target-feature=+aes,+sse2,+avx2,+prefer-256-bit,-vzeroupper -Zstack-protector=none -Coverflow-checks=no -Cforce-unwind-tables=yes -Cdebuginfo=0 -Copt-level=3 -Cprefer-dynamic=no -Zdirect-access-external-data=no -Zfunction-sections=yes -Zrelax-elf-relocations=on -Zstack-protector=none -Zunstable-options -Cstrip=symbols -Zcrate-attr=recursion_limit="256"'
+
+# export V=1
+# export VERBOSE=1
+export JOBS=20
+export MAKEFLAGS="-j20"
+export MALLOC_CONF="thp:always,metadata_thp:always"
+export CRATE_CC_NO_DEFAULTS=1
+export CARGO_INCREMENTAL=1
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang
+
+MALLOC_CONF="thp:always,metadata_thp:always" cargo -Zunstable-options -Ztarget-applies-to-host -Zhost-config build --jobs 20 --target x86_64-unknown-linux-gnu --release -vv --bin difft
+
+sudo cp /aot/stuff/dev/difftastic/target/x86_64-unknown-linux-gnu/release/difft /usr/bin/difft
+
+# -Clinker=clang -Clink-arg=-fuse-ld=lld -Clink-arg=-flto=full
